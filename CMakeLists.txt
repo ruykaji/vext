@@ -8,7 +8,6 @@ set(VEXT_CUDA OFF)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-include("get_package")
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
@@ -41,8 +40,8 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_compile_definitions(vext 
     PUBLIC
-    $<$<CONFIG:Debug>:DEBUG=1>
-    VEXT_CUDA=$<BOOL:${VEXT_CUDA}>
+        $<$<CONFIG:Debug>:DEBUG=1>
+        VEXT_CUDA=$<BOOL:${VEXT_CUDA}>
 )
 
 target_include_directories(vext
@@ -59,6 +58,11 @@ if(VEXT_CUDA)
         CUDA_STANDARD_REQUIRED ON
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_ARCHITECTURES native
+    )
+
+    target_link_libraries(vext
+        PRIVATE
+            CUDA::cudart
     )
 endif()
 
