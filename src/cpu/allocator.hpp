@@ -3,10 +3,10 @@
 
 #include <cstdint>
 
-namespace vext
+namespace vext::cpu
 {
 
-class AllocatorCPU
+class Allocator
 {
 public:
 	static void*

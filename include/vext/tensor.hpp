@@ -49,8 +49,39 @@ public:
 		const Tensor& lhs,
 		const Tensor& rhs);
 
+	Tensor&
+	operator+=(
+		const Tensor& other);
+
+	Tensor&
+	operator-=(
+		const Tensor& other);
+
+	Tensor&
+	operator*=(
+		const Tensor& other);
+
+public:
+	float*
+	data() noexcept
+	{
+		return __ptr;
+	}
+
+	const Device&
+	device() const noexcept
+	{
+		return __device;
+	}
+
+	const Shape&
+	shape() const noexcept
+	{
+		return __shape;
+	}
+
 private:
-	void*  __ptr    = nullptr;
+	float* __ptr    = nullptr;
 	Device __device = {};
 	Shape  __shape  = {};
 };

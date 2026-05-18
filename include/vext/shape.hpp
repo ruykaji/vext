@@ -1,7 +1,7 @@
 #ifndef __VEXT_SHAPE_HPP__
 #define __VEXT_SHAPE_HPP__
 
-#include <initializer_list>
+#include <cstdint>
 #include <stdexcept>
 #include <vector>
 
@@ -16,18 +16,31 @@ public:
 
 	Shape(
 		const std::initializer_list<std::size_t> dims)
-		: __dims(dims) {};
+		: __dims(dims)
+	{
+		compute_length();
+		compute_strides();
+	};
 
 	explicit Shape(
 		const std::vector<std::size_t>& dims)
-		: __dims() {};
+		: __dims(dims)
+	{
+		compute_length();
+		compute_strides();
+	};
 
 public:
 	std::size_t
 	operator[](
-		const std::size_t index) const noexcept
+		const std::int64_t index) const noexcept
 	{
-		return __dims[index];
+		if(index >= 0)
+			{
+				return __dims[index];
+			}
+
+		return __dims[__dims.size() + index];
 	}
 
 	friend bool
@@ -49,14 +62,19 @@ public:
 public:
 	std::size_t
 	at(
-		const std::size_t index) const
+		const std::int64_t index) const
 	{
-		if(index >= __dims.size())
+		if(std::abs(index) >= __dims.size())
 			{
 				throw std::out_of_range("Attempt to out of range access in a Shape instance.");
 			}
 
-		return __dims[index];
+		if(index >= 0)
+			{
+				return __dims[index];
+			}
+
+		return __dims[__dims.size() + index];
 	}
 
 	std::size_t

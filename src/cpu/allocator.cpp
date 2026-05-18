@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstring>
 #include <set>
 #include <stdexcept>
 #include <unordered_map>
@@ -6,7 +7,7 @@
 
 #include "allocator.hpp"
 
-namespace vext::allocator
+namespace vext::cpu::allocator
 {
 
 constexpr std::size_t ALIGNMENT           = 64;
@@ -109,14 +110,14 @@ split_block(
 
 }
 
-namespace vext
+namespace vext::cpu
 {
 
 static allocator::Pool small_pool = {};
 static allocator::Pool large_pool = {};
 
 void*
-AllocatorCPU::allocate(
+Allocator::allocate(
 	const std::size_t requested_size)
 {
 	const std::size_t aligned_size = ((requested_size + allocator::ALIGNMENT - 1) / allocator::ALIGNMENT) * allocator::ALIGNMENT;
@@ -168,11 +169,13 @@ AllocatorCPU::allocate(
 			pool.roots.emplace_back(split_block);
 		}
 
+	std::memset(ptr, 0, requested_size);
+
 	return ptr;
 }
 
 void
-AllocatorCPU::deallocate(
+Allocator::deallocate(
 	void* ptr)
 {
 	allocator::Block* block = nullptr;
@@ -234,7 +237,7 @@ AllocatorCPU::deallocate(
 }
 
 void
-AllocatorCPU::free()
+Allocator::free()
 {
 	for(auto& block : small_pool.roots)
 		{
