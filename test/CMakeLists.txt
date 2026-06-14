@@ -12,8 +12,8 @@ target_include_directories(test_operations_cpu
         ${CMAKE_SOURCE_DIR}/src
 )
 
-add_gtest(test_tensor tensor.cpp vext)
-target_include_directories(test_tensor
+add_gtest(test_tensor_cpu tensor_cpu.cpp vext)
+target_include_directories(test_tensor_cpu
     PRIVATE
         ${CMAKE_SOURCE_DIR}/src
 )

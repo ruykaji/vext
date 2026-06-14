@@ -11,7 +11,7 @@ class Device
 public:
 	Device(
 		const type::Backend backend = type::Backend::CPU,
-		const std::size_t   index   = 0)
+		const std::uint64_t index   = 0)
 		: __backend(backend),
 		  __index(index) {};
 
@@ -40,7 +40,7 @@ public:
 	}
 
 	static Device
-	cuda(const std::size_t index = 0)
+	cuda(const std::uint64_t index = 0)
 	{
 		return { type::Backend::CUDA, index };
 	}
@@ -59,7 +59,7 @@ public:
 
 private:
 	type::Backend __backend = type::Backend::CPU;
-	std::size_t   __index   = 0;
+	std::uint64_t __index   = 0;
 };
 
 }

@@ -11,7 +11,7 @@ class Allocator
 public:
 	static void*
 	allocate(
-		const std::size_t requested_size);
+		const std::uint64_t requested_size);
 
 	static void
 	deallocate(

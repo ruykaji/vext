@@ -10,12 +10,12 @@
 namespace vext::cpu::allocator
 {
 
-constexpr std::size_t ALIGNMENT           = 64;
-constexpr std::size_t SIZE_THRESHOLD      = 1024 * 1024;      /** 1MB */
-constexpr std::size_t SMALL_POOL_BOUNDARY = 512;              /** 512B */
-constexpr std::size_t LARGE_POOL_BOUNDARY = 512 * 1024;       /** 512KB */
-constexpr std::size_t MIN_SMALL_POOL_SIZE = 2 * 1024 * 1024;  /** 2MB */
-constexpr std::size_t MIN_LARGE_POOL_SIZE = 20 * 1024 * 1024; /** 20MB */
+constexpr std::uint64_t ALIGNMENT           = 64;
+constexpr std::uint64_t SIZE_THRESHOLD      = 1024 * 1024;      /** 1MB */
+constexpr std::uint64_t SMALL_POOL_BOUNDARY = 512;              /** 512B */
+constexpr std::uint64_t LARGE_POOL_BOUNDARY = 512 * 1024;       /** 512KB */
+constexpr std::uint64_t MIN_SMALL_POOL_SIZE = 2 * 1024 * 1024;  /** 2MB */
+constexpr std::uint64_t MIN_LARGE_POOL_SIZE = 20 * 1024 * 1024; /** 20MB */
 
 template <typename Tp, bool Less = true>
 struct DereferenceCompare
@@ -39,7 +39,7 @@ struct DereferenceCompare
 struct Block
 {
 	void*       ptr    = nullptr;
-	std::size_t size   = 0;
+	std::uint64_t size   = 0;
 	bool        in_use = false;
 
 	Block* prev = nullptr;
@@ -62,9 +62,9 @@ struct Pool
 	std::vector<Block*>                         roots            = {};
 };
 
-static std::size_t
+static std::uint64_t
 size(
-	const std::size_t requested_size)
+	const std::uint64_t requested_size)
 {
 	if(requested_size < SIZE_THRESHOLD)
 		{
@@ -82,11 +82,11 @@ size(
 static Block*
 split_block(
 	Block*            block,
-	const std::size_t requested_size)
+	const std::uint64_t requested_size)
 {
-	const std::size_t boundary = requested_size < SIZE_THRESHOLD ? SMALL_POOL_BOUNDARY : LARGE_POOL_BOUNDARY;
+	const std::uint64_t boundary = requested_size < SIZE_THRESHOLD ? SMALL_POOL_BOUNDARY : LARGE_POOL_BOUNDARY;
 
-	if(const std::size_t diff = block->size - requested_size; diff >= boundary)
+	if(const std::uint64_t diff = block->size - requested_size; diff >= boundary)
 		{
 			Block* new_block = new Block{
 				.ptr    = static_cast<char*>(block->ptr) + requested_size,
@@ -118,9 +118,9 @@ static allocator::Pool large_pool = {};
 
 void*
 Allocator::allocate(
-	const std::size_t requested_size)
+	const std::uint64_t requested_size)
 {
-	const std::size_t aligned_size = ((requested_size + allocator::ALIGNMENT - 1) / allocator::ALIGNMENT) * allocator::ALIGNMENT;
+	const std::uint64_t aligned_size = ((requested_size + allocator::ALIGNMENT - 1) / allocator::ALIGNMENT) * allocator::ALIGNMENT;
 
 	void*            ptr          = nullptr;
 	allocator::Pool& pool         = aligned_size < allocator::SIZE_THRESHOLD ? small_pool : large_pool;
@@ -144,7 +144,7 @@ Allocator::allocate(
 		}
 	else
 		{
-			const std::size_t allocation_size = allocator::size(aligned_size);
+			const std::uint64_t allocation_size = allocator::size(aligned_size);
 
 			allocator::Block* new_block = new allocator::Block{
 				.size = allocation_size,

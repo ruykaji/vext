@@ -12,6 +12,14 @@ enum class Backend : std::uint8_t
 	CUDA
 };
 
+enum class ParameterInit : std::uint8_t
+{
+	XAVIER_NORMAL = 0,
+	XAVIER_UNIFORM,
+	KAIMING_NORMAL,
+	KAIMING_UNIFORM,
+};
+
 }
 
 #endif

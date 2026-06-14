@@ -6,9 +6,9 @@
 
 #include "cpu/allocator.hpp"
 
-constexpr std::size_t ALIGNMENT           = 64;
-constexpr std::size_t MIN_LARGE_POOL_SIZE = 20 * 1024 * 1024;
-constexpr std::size_t SIZE_THRESHOLD      = 1024 * 1024;
+constexpr std::uint64_t ALIGNMENT           = 64;
+constexpr std::uint64_t MIN_LARGE_POOL_SIZE = 20 * 1024 * 1024;
+constexpr std::uint64_t SIZE_THRESHOLD      = 1024 * 1024;
 
 class AllocatorCPUTest
 	: public testing::Test
@@ -23,7 +23,7 @@ protected:
 	bool
 	is_aligned(
 		const void*       ptr,
-		const std::size_t alignment)
+		const std::uint64_t alignment)
 	{
 		return reinterpret_cast<std::uintptr_t>(ptr) % alignment == 0;
 	}

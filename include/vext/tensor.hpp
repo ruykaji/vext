@@ -61,12 +61,33 @@ public:
 	operator*=(
 		const Tensor& other);
 
-public:
-	float*
-	data() noexcept
+	template <std::integral... Is>
+	float&
+	operator[](Is... dims)
 	{
-		return __ptr;
+		const std::uint64_t dims_pack[]   = { static_cast<std::uint64_t>(dims)... };
+		const std::uint64_t num_arguments = sizeof...(dims);
+		const std::uint64_t index         = calculate_index(dims_pack, num_arguments);
+
+		return __ptr[index];
 	}
+
+	template <std::integral... Is>
+	float
+	operator[](Is... dims) const
+	{
+		const std::uint64_t dims_pack[]   = { static_cast<std::uint64_t>(dims)... };
+		const std::uint64_t num_arguments = sizeof...(dims);
+		const std::uint64_t index         = calculate_index(dims_pack, num_arguments);
+
+		return __ptr[index];
+	}
+
+public:
+	static Tensor
+	matmul(
+		const Tensor& lhs,
+		const Tensor& rhs);
 
 	const Device&
 	device() const noexcept
@@ -79,6 +100,12 @@ public:
 	{
 		return __shape;
 	}
+
+private:
+	std::uint64_t
+	calculate_index(
+		const std::uint64_t dims_pack[],
+		const std::uint64_t num_arguments) const;
 
 private:
 	float* __ptr    = nullptr;

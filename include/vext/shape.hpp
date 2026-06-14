@@ -11,11 +11,11 @@ namespace vext
 class Shape
 {
 public:
-	using iterator       = std::vector<std::size_t>::iterator;
-	using const_iterator = std::vector<std::size_t>::const_iterator;
+	using iterator       = std::vector<std::uint64_t>::iterator;
+	using const_iterator = std::vector<std::uint64_t>::const_iterator;
 
 	Shape(
-		const std::initializer_list<std::size_t> dims)
+		const std::initializer_list<std::uint64_t> dims)
 		: __dims(dims)
 	{
 		compute_length();
@@ -23,15 +23,23 @@ public:
 	};
 
 	explicit Shape(
-		const std::vector<std::size_t>& dims)
+		const std::vector<std::uint64_t>& dims)
 		: __dims(dims)
 	{
 		compute_length();
 		compute_strides();
 	};
 
+	explicit Shape(
+		std::vector<std::uint64_t>&& dims)
+		: __dims(std::forward<std::vector<std::uint64_t>>(dims))
+	{
+		compute_length();
+		compute_strides();
+	};
+
 public:
-	std::size_t
+	std::uint64_t
 	operator[](
 		const std::int64_t index) const noexcept
 	{
@@ -60,7 +68,12 @@ public:
 	}
 
 public:
-	std::size_t
+	static Shape
+	broadcast(
+		const Shape& source,
+		const Shape& target);
+
+	std::uint64_t
 	at(
 		const std::int64_t index) const
 	{
@@ -77,16 +90,28 @@ public:
 		return __dims[__dims.size() + index];
 	}
 
-	std::size_t
+	std::uint64_t
 	length() const noexcept
 	{
 		return __length;
 	}
 
-	std::size_t
+	std::uint64_t
 	size() const noexcept
 	{
 		return __dims.size();
+	}
+
+	const std::vector<std::uint64_t>&
+	dims() const noexcept
+	{
+		return __dims;
+	}
+
+	const std::vector<std::uint64_t>&
+	strides() const noexcept
+	{
+		return __strides;
 	}
 
 	iterator
@@ -121,9 +146,9 @@ private:
 	compute_strides() noexcept;
 
 private:
-	std::size_t              __length  = 0;
-	std::vector<std::size_t> __dims    = {};
-	std::vector<std::size_t> __strides = {};
+	std::uint64_t              __length  = 0;
+	std::vector<std::uint64_t> __dims    = {};
+	std::vector<std::uint64_t> __strides = {};
 };
 
 };
