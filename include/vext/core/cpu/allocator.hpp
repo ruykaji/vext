@@ -1,3 +1,7 @@
+#ifndef __VEXT_ALLOCATOR_CPU_HPP__
+#define __VEXT_ALLOCATOR_CPU_HPP__
+
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <set>
@@ -5,9 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "allocator.hpp"
-
-namespace vext::cpu::allocator
+namespace vext::core::cpu::allocator
 {
 
 constexpr std::uint64_t ALIGNMENT           = 64;
@@ -17,30 +19,11 @@ constexpr std::uint64_t LARGE_POOL_BOUNDARY = 512 * 1024;       /** 512KB */
 constexpr std::uint64_t MIN_SMALL_POOL_SIZE = 2 * 1024 * 1024;  /** 2MB */
 constexpr std::uint64_t MIN_LARGE_POOL_SIZE = 20 * 1024 * 1024; /** 20MB */
 
-template <typename Tp, bool Less = true>
-struct DereferenceCompare
-{
-	bool
-	operator()(
-		const Tp* lhs,
-		const Tp* rhs) const
-	{
-		if constexpr(Less)
-			{
-				return (*lhs) < (*rhs);
-			}
-		else
-			{
-				return (*lhs) > (*rhs);
-			}
-	}
-};
-
 struct Block
 {
-	void*       ptr    = nullptr;
+	void*         ptr    = nullptr;
 	std::uint64_t size   = 0;
-	bool        in_use = false;
+	bool          in_use = false;
 
 	Block* prev = nullptr;
 	Block* next = nullptr;
@@ -54,15 +37,26 @@ struct Block
 	}
 };
 
-struct Pool
-
+template <typename Tp>
+struct DereferenceCompareLess
 {
-	std::set<Block*, DereferenceCompare<Block>> free_blocks      = {};
-	std::unordered_map<const void*, Block*>     allocated_blocks = {};
-	std::vector<Block*>                         roots            = {};
+	bool
+	operator()(
+		const Tp* lhs,
+		const Tp* rhs) const
+	{
+		return (*lhs) < (*rhs);
+	}
 };
 
-static std::uint64_t
+struct Pool
+{
+	std::set<Block*, DereferenceCompareLess<Block>> free_blocks      = {};
+	std::unordered_map<const void*, Block*>         allocated_blocks = {};
+	std::vector<Block*>                             roots            = {};
+};
+
+static inline std::uint64_t
 size(
 	const std::uint64_t requested_size)
 {
@@ -79,9 +73,9 @@ size(
 	return ((requested_size + LARGE_POOL_BOUNDARY - 1) / LARGE_POOL_BOUNDARY) * LARGE_POOL_BOUNDARY;
 }
 
-static Block*
+static inline Block*
 split_block(
-	Block*            block,
+	Block*              block,
 	const std::uint64_t requested_size)
 {
 	const std::uint64_t boundary = requested_size < SIZE_THRESHOLD ? SMALL_POOL_BOUNDARY : LARGE_POOL_BOUNDARY;
@@ -108,22 +102,22 @@ split_block(
 	return block;
 }
 
+static Pool small_pool = {};
+static Pool large_pool = {};
+
 }
 
-namespace vext::cpu
+namespace vext::core::cpu
 {
 
-static allocator::Pool small_pool = {};
-static allocator::Pool large_pool = {};
-
-void*
-Allocator::allocate(
+static inline void*
+allocate(
 	const std::uint64_t requested_size)
 {
 	const std::uint64_t aligned_size = ((requested_size + allocator::ALIGNMENT - 1) / allocator::ALIGNMENT) * allocator::ALIGNMENT;
 
 	void*            ptr          = nullptr;
-	allocator::Pool& pool         = aligned_size < allocator::SIZE_THRESHOLD ? small_pool : large_pool;
+	allocator::Pool& pool         = aligned_size < allocator::SIZE_THRESHOLD ? allocator::small_pool : allocator::large_pool;
 	allocator::Block search_block = { .size = aligned_size };
 
 	if(const auto it = pool.free_blocks.lower_bound(&search_block); it != pool.free_blocks.end())
@@ -132,8 +126,9 @@ Allocator::allocate(
 			pool.free_blocks.erase(it);
 
 			allocator::Block* split_block = allocator::split_block(old_block, aligned_size);
-			ptr                           = split_block->ptr;
-			split_block->in_use           = true;
+
+			ptr                 = split_block->ptr;
+			split_block->in_use = true;
 
 			if(split_block->next != nullptr)
 				{
@@ -146,9 +141,7 @@ Allocator::allocate(
 		{
 			const std::uint64_t allocation_size = allocator::size(aligned_size);
 
-			allocator::Block* new_block = new allocator::Block{
-				.size = allocation_size,
-			};
+			allocator::Block* new_block = new allocator::Block{ .size = allocation_size };
 
 			if(posix_memalign(&new_block->ptr, allocator::ALIGNMENT, allocation_size) != 0)
 				{
@@ -157,8 +150,9 @@ Allocator::allocate(
 				}
 
 			allocator::Block* split_block = allocator::split_block(new_block, aligned_size);
-			ptr                           = split_block->ptr;
-			split_block->in_use           = true;
+
+			ptr                 = split_block->ptr;
+			split_block->in_use = true;
 
 			if(split_block->next != nullptr)
 				{
@@ -174,22 +168,27 @@ Allocator::allocate(
 	return ptr;
 }
 
-void
-Allocator::deallocate(
+static inline void
+deallocate(
 	void* ptr)
 {
+	if(ptr == nullptr)
+		{
+			return;
+		}
+
 	allocator::Block* block = nullptr;
 	allocator::Pool*  pool  = nullptr;
 
-	if(const auto it = small_pool.allocated_blocks.find(ptr); it != small_pool.allocated_blocks.end())
+	if(const auto it = allocator::small_pool.allocated_blocks.find(ptr); it != allocator::small_pool.allocated_blocks.end())
 		{
 			block = it->second;
-			pool  = &small_pool;
+			pool  = &allocator::small_pool;
 		}
-	else if(const auto it = large_pool.allocated_blocks.find(ptr); it != large_pool.allocated_blocks.end())
+	else if(const auto it = allocator::large_pool.allocated_blocks.find(ptr); it != allocator::large_pool.allocated_blocks.end())
 		{
 			block = it->second;
-			pool  = &large_pool;
+			pool  = &allocator::large_pool;
 		}
 	else
 		{
@@ -199,7 +198,8 @@ Allocator::deallocate(
 	allocator::Block* prev_block = block->prev;
 	allocator::Block* next_block = block->next;
 	allocator::Block* merged     = block;
-	merged->in_use               = false;
+
+	merged->in_use = false;
 
 	if(prev_block != nullptr && !prev_block->in_use)
 		{
@@ -236,10 +236,10 @@ Allocator::deallocate(
 	pool->allocated_blocks.erase(ptr);
 }
 
-void
-Allocator::free()
+static inline void
+free()
 {
-	for(auto& block : small_pool.roots)
+	for(auto& block : allocator::small_pool.roots)
 		{
 			std::free(block->ptr);
 
@@ -252,11 +252,11 @@ Allocator::free()
 				}
 		}
 
-	small_pool.free_blocks.clear();
-	small_pool.allocated_blocks.clear();
-	small_pool.roots.clear();
+	allocator::small_pool.free_blocks.clear();
+	allocator::small_pool.allocated_blocks.clear();
+	allocator::small_pool.roots.clear();
 
-	for(auto& block : large_pool.roots)
+	for(auto& block : allocator::large_pool.roots)
 		{
 			std::free(block->ptr);
 
@@ -269,9 +269,11 @@ Allocator::free()
 				}
 		}
 
-	large_pool.free_blocks.clear();
-	large_pool.allocated_blocks.clear();
-	large_pool.roots.clear();
+	allocator::large_pool.free_blocks.clear();
+	allocator::large_pool.allocated_blocks.clear();
+	allocator::large_pool.roots.clear();
 }
 
 }
+
+#endif

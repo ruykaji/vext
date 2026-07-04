@@ -14,10 +14,12 @@ public:
 	using iterator       = std::vector<std::uint64_t>::iterator;
 	using const_iterator = std::vector<std::uint64_t>::const_iterator;
 
+	template <std::integral... Is>
 	Shape(
-		const std::initializer_list<std::uint64_t> dims)
-		: __dims(dims)
+		Is... dims)
 	{
+		__dims = { static_cast<std::uint64_t>(dims)... };
+
 		compute_length();
 		compute_strides();
 	};
@@ -71,7 +73,61 @@ public:
 	static Shape
 	broadcast(
 		const Shape& source,
-		const Shape& target);
+		const Shape& target)
+	{
+		const std::uint64_t source_size = source.size();
+		const std::uint64_t target_size = target.size();
+
+		if(target_size > source_size)
+			{
+				throw std::runtime_error("");
+			}
+
+		std::uint64_t offset_left = 0;
+		std::uint64_t subset_size = 0;
+
+		for(std::uint64_t i = 0; i < source_size; ++i)
+			{
+				if(source.__dims[i] == target.__dims[subset_size])
+					{
+						++subset_size;
+
+						if(subset_size == target_size)
+							{
+								break;
+							}
+
+						continue;
+					}
+
+				subset_size = 0;
+				offset_left = i + 1;
+			}
+
+		if(subset_size == 0 && target.__length != 1)
+			{
+				throw std::runtime_error("");
+			}
+
+		std::vector<std::uint64_t> dims;
+		dims.resize(source_size, 1);
+
+		std::copy(target.__dims.begin(), target.__dims.end(), dims.begin() + offset_left);
+
+		Shape shape(std::move(dims));
+
+		for(std::uint64_t i = 0; i < offset_left; ++i)
+			{
+				shape.__strides[i] = 0;
+			}
+
+		for(std::uint64_t i = offset_left + target_size; i < source_size; ++i)
+			{
+				shape.__strides[i] = 0;
+			}
+
+		return shape;
+	}
 
 	std::uint64_t
 	at(
@@ -140,10 +196,35 @@ public:
 
 private:
 	void
-	compute_length() noexcept;
+	compute_length() noexcept
+	{
+		__length = 1;
+
+		for(const auto dim : __dims)
+			{
+				__length *= dim;
+			}
+	}
 
 	void
-	compute_strides() noexcept;
+	compute_strides() noexcept
+	{
+		const std::uint64_t size = __dims.size();
+		__strides.resize(size);
+
+		if(size == 0)
+			{
+				return;
+			}
+
+		std::uint64_t stride = 1;
+
+		for(std::uint64_t i = size; i > 0; --i)
+			{
+				__strides[i - 1] = stride;
+				stride *= __dims[i - 1];
+			}
+	}
 
 private:
 	std::uint64_t              __length  = 0;

@@ -6,35 +6,33 @@
 namespace vext::nn
 {
 
-class Linear : public Module
+template <Backend Bp>
+class Linear : public Module<Bp>
 {
 public:
 	Linear(
-		const std::uint64_t&        input,
-		const std::uint64_t&        hidden_dim,
-		const type::ParameterInit parameter_init = type::ParameterInit::KAIMING_NORMAL,
-		const float               negative_slop  = 0.0)
+		const std::uint64_t& input,
+		const std::uint64_t& hidden_dim,
+		const float          negative_slop = 0.0)
+		: Module<Bp>(),
+		  __weight(input, hidden_dim),
+		  __bias(hidden_dim)
 	{
-		__weight = { { input, hidden_dim } };
-		init(__weight, parameter_init, negative_slop);
-		add("weight", &__weight);
-
-		__bias = { { hidden_dim } };
-		init(__bias, parameter_init, negative_slop);
-		add("bias", &__bias);
+		this->template add<InitializationKind::XAVIER_NORMAL>(&__weight);
+		this->template add<InitializationKind::XAVIER_NORMAL>(&__bias);
 	}
 
 public:
-	Tensor
+	Tensor<float, Bp>
 	operator()(
-		const Tensor& x)
+		const Tensor<float, Bp>& x) const
 	{
-		return Tensor::matmul(x, __weight) + __bias;
+		return x.matmul(__weight) + __bias;
 	}
 
 private:
-	Tensor __weight = {};
-	Tensor __bias   = {};
+	Tensor<float, Bp> __weight;
+	Tensor<float, Bp> __bias;
 };
 
 }

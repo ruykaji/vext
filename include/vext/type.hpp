@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-namespace vext::type
+namespace vext
 {
 
 enum class Backend : std::uint8_t
@@ -12,9 +12,20 @@ enum class Backend : std::uint8_t
 	CUDA
 };
 
-enum class ParameterInit : std::uint8_t
+enum class ReduceKind : std::uint8_t
 {
-	XAVIER_NORMAL = 0,
+	NONE = 0,
+	ADD,
+	MUL,
+	MIN,
+	MAX,
+	MEAN
+};
+
+enum class InitializationKind : std::uint8_t
+{
+	NONE = 0,
+	XAVIER_NORMAL,
 	XAVIER_UNIFORM,
 	KAIMING_NORMAL,
 	KAIMING_UNIFORM,

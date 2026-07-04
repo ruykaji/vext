@@ -36,20 +36,19 @@ if(VEXT_ENABLE_CUDA)
     endif()
 endif()
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_library(vext
+    INTERFACE)
 
 target_compile_definitions(vext 
-    PUBLIC
+   INTERFACE 
         $<$<CONFIG:Debug>:DEBUG=1>
         VEXT_CUDA=$<BOOL:${VEXT_CUDA}>
 )
 
 target_include_directories(vext
-    PUBLIC
+    INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 if(VEXT_CUDA)
@@ -61,7 +60,7 @@ if(VEXT_CUDA)
     )
 
     target_link_libraries(vext
-        PRIVATE
+        INTERFACE
             CUDA::cudart
     )
 endif()

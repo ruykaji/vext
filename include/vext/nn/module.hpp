@@ -1,30 +1,26 @@
 #ifndef __VEXT_NN_MODULE_HPP__
 #define __VEXT_NN_MODULE_HPP__
 
-#include "vext/type.hpp"
-#include <memory>
 #include <random>
 #include <stack>
-#include <stdexcept>
-#include <string>
-#include <unordered_map>
 
 #include <vext/tensor.hpp>
+#include <vext/type.hpp>
 
 namespace vext::nn::module
 {
 
-template <typename Tp, bool IsConst = false>
+template <typename Tp>
 class ParameterIterator
 {
-	using vector_iterator = std::conditional_t<IsConst, typename std::vector<Tensor*>::const_iterator, typename std::vector<Tensor*>::iterator>;
+	using vector_iterator = std::conditional_t<std::is_const_v<Tp>, typename std::vector<Tensor<float>*>::const_iterator, typename std::vector<Tensor<float>*>::iterator>;
 
 public:
 	using iterator_category = std::input_iterator_tag;
-	using value_type        = Tensor;
+	using value_type        = Tensor<float>;
 	using difference_type   = std::ptrdiff_t;
-	using pointer           = std::conditional_t<IsConst, Tp const*, Tp*>;
-	using reference         = std::conditional_t<IsConst, Tensor const&, Tensor&>;
+	using pointer           = std::conditional_t<std::is_const_v<Tp>, Tp const*, Tp*>;
+	using reference         = std::conditional_t<std::is_const_v<Tp>, Tensor<float> const&, Tensor<float>&>;
 
 public:
 	ParameterIterator() = default;
@@ -134,34 +130,18 @@ private:
 namespace vext::nn
 {
 
+template <Backend Bp>
 class Module
 {
 	friend module::ParameterIterator<Module>;
-	friend module::ParameterIterator<Module, true>;
+	friend module::ParameterIterator<const Module>;
 
 public:
 	using iterator       = module::ParameterIterator<Module>;
-	using const_iterator = module::ParameterIterator<Module, true>;
+	using const_iterator = module::ParameterIterator<const Module>;
 
 public:
-	Module() = default;
-
-	Module(
-		const Module&) = delete;
-
-	Module(
-		Module&&) = delete;
-
 	virtual ~Module() = default;
-
-public:
-	Module&
-	operator=(
-		const Module&) = delete;
-
-	Module&
-	operator=(
-		Module&&) = delete;
 
 public:
 	iterator
@@ -189,40 +169,65 @@ public:
 	}
 
 protected:
+	template <InitializationKind Kp>
 	void
 	add(
-		const std::string& name,
-		Tensor*            param)
+		Tensor<float, Bp>* param,
+		const float        alph = 0.0f)
 	{
-		check_name_available(name);
+		Tensor<float, Bp>& ref = *__parameters.emplace_back(param);
 
-		const std::uint64_t index = __parameters.size();
-
-		__parameters.emplace_back(param);
-		__name_to_index_parameters.emplace(name, index);
+		if constexpr(Kp == InitializationKind::XAVIER_NORMAL)
+			{
+				xavier_normal(ref);
+			}
+		else if constexpr(Kp == InitializationKind::XAVIER_UNIFORM)
+			{
+				xavier_uniform(ref);
+			}
+		else if constexpr(Kp == InitializationKind::KAIMING_NORMAL)
+			{
+				kaiming_normal(ref, alph);
+			}
+		else if constexpr(Kp == InitializationKind::KAIMING_UNIFORM)
+			{
+				kaiming_uniform(ref, alph);
+			}
 	}
 
 	void
 	add(
-		const std::string& name,
-		Module*            module)
+		Module* module)
 	{
-		if(module == nullptr)
+		__modules.emplace_back(module);
+	}
+
+private:
+	static std::pair<std::uint64_t, std::uint64_t>
+	calculate_fan_in_and_fan_out(
+		const Shape& shape) noexcept
+	{
+		const std::uint64_t dims_count = shape.size();
+
+		const std::uint64_t input_fmaps  = dims_count < 2 ? 1 : shape[1];
+		const std::uint64_t output_fmaps = shape[0];
+
+		std::uint64_t receptive_field_size = 1;
+
+		for(std::uint64_t i = 2; i < dims_count; ++i)
 			{
-				throw std::invalid_argument("");
+				receptive_field_size *= shape[i];
 			}
 
-		check_name_available(name);
+		const std::uint64_t fan_in  = input_fmaps * receptive_field_size;
+		const std::uint64_t fan_out = output_fmaps * receptive_field_size;
 
-		const std::uint64_t index = __modules.size();
-
-		__modules.emplace_back(module);
-		__name_to_index_modules.emplace(name, index);
+		return { fan_in, fan_out };
 	}
 
-	void
+	static void
 	xavier_normal(
-		Tensor& weight)
+		Tensor<float, Bp>& weight)
 	{
 		const Shape& shape           = weight.shape();
 		const auto [fan_in, fan_out] = calculate_fan_in_and_fan_out(shape);
@@ -234,82 +239,13 @@ protected:
 
 		for(std::uint64_t i = 0, end = shape.length(); i < end; ++i)
 			{
-				weight.data()[i] = d(gen);
+				weight.item(i) = d(gen);
 			}
 	}
 
-	void
-	init(
-		Tensor&                   weight,
-		const type::ParameterInit parameter_init = type::ParameterInit::XAVIER_NORMAL,
-		const float               negative_slop  = 0.0f)
-	{
-		switch(parameter_init)
-			{
-				case type::ParameterInit::XAVIER_NORMAL :
-					{
-						xavier_normal(weight);
-						break;
-					}
-				case type::ParameterInit::XAVIER_UNIFORM :
-					{
-						xavier_uniform(weight);
-						break;
-					}
-				case type::ParameterInit::KAIMING_NORMAL :
-					{
-						kaiming_normal(weight, negative_slop);
-						break;
-					}
-				case type::ParameterInit::KAIMING_UNIFORM :
-					{
-						kaiming_uniform(weight, negative_slop);
-						break;
-					}
-			}
-	}
-
-private:
-	void
-	check_name_available(
-		const std::string& name) const
-	{
-		if(__name_to_index_parameters.contains(name) || __name_to_index_modules.contains(name))
-			{
-				throw std::invalid_argument("");
-			}
-	}
-
-	std::pair<std::uint64_t, std::uint64_t>
-	calculate_fan_in_and_fan_out(
-		const Shape& shape)
-	{
-		const std::uint64_t dims = shape.size();
-
-		if(dims < 2)
-			{
-				throw std::runtime_error("");
-			}
-
-		const std::uint64_t input_fmaps  = shape[1];
-		const std::uint64_t output_fmaps = shape[0];
-
-		std::uint64_t receptive_field_size = 1;
-
-		for(std::uint64_t i = 2; i < dims; ++i)
-			{
-				receptive_field_size *= shape[i];
-			}
-
-		const std::uint64_t fan_in  = input_fmaps * receptive_field_size;
-		const std::uint64_t fan_out = output_fmaps * receptive_field_size;
-
-		return { fan_in, fan_out };
-	}
-
-	void
+	static void
 	xavier_uniform(
-		Tensor& weight)
+		Tensor<float, Bp>& weight)
 	{
 		const Shape& shape           = weight.shape();
 		const auto [fan_in, fan_out] = calculate_fan_in_and_fan_out(shape);
@@ -322,14 +258,14 @@ private:
 
 		for(std::uint64_t i = 0, end = shape.length(); i < end; ++i)
 			{
-				weight[i] = d(gen);
+				weight.item(i) = d(gen);
 			}
 	}
 
-	void
+	static void
 	kaiming_normal(
-		Tensor&     weight,
-		const float alph = 0.0f)
+		Tensor<float, Bp>& weight,
+		const float        alph = 0.0f)
 	{
 		const Shape& shape     = weight.shape();
 		const auto [fan_in, _] = calculate_fan_in_and_fan_out(shape);
@@ -342,14 +278,14 @@ private:
 
 		for(std::uint64_t i = 0, end = shape.length(); i < end; ++i)
 			{
-				weight[i] = d(gen);
+				weight.item(i) = d(gen);
 			}
 	}
 
-	void
+	static void
 	kaiming_uniform(
-		Tensor&     weight,
-		const float alph = 0.0f)
+		Tensor<float, Bp>& weight,
+		const float        alph = 0.0f)
 	{
 		const Shape& shape     = weight.shape();
 		const auto [fan_in, _] = calculate_fan_in_and_fan_out(shape);
@@ -363,16 +299,13 @@ private:
 
 		for(std::uint64_t i = 0, end = shape.length(); i < end; ++i)
 			{
-				weight[i] = d(gen);
+				weight.item(i) = d(gen);
 			}
 	}
 
 private:
-	std::vector<Tensor*>                           __parameters;
-	std::unordered_map<std::string, std::uint64_t> __name_to_index_parameters;
-
-	std::vector<Module*>                           __modules;
-	std::unordered_map<std::string, std::uint64_t> __name_to_index_modules;
+	std::vector<Tensor<float, Bp>*> __parameters;
+	std::vector<Module*>            __modules;
 };
 
 }
