@@ -6,7 +6,7 @@
 namespace vext::core
 {
 
-enum class UnaryOperationKind : std::uint8_t
+enum class UnaryOperation : std::uint8_t
 {
 	NONE = 0,
 	ABS,
@@ -19,7 +19,7 @@ enum class UnaryOperationKind : std::uint8_t
 	SIGMOID
 };
 
-enum class BinaryOperationKind : std::uint8_t
+enum class BinaryOperation : std::uint8_t
 {
 	NONE = 0,
 	ADD,
@@ -31,7 +31,7 @@ enum class BinaryOperationKind : std::uint8_t
 	MAX
 };
 
-enum class LogicOperationKind : std::uint8_t
+enum class LogicOperation : std::uint8_t
 {
 	NONE = 0,
 	EQUAL,
@@ -42,7 +42,7 @@ enum class LogicOperationKind : std::uint8_t
 	GREATER_EQUAL
 };
 
-enum class ReductionOperationKind : std::uint8_t
+enum class ReductionOperation : std::uint8_t
 {
 	NONE = 0,
 	SUM,

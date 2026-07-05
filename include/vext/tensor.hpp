@@ -236,7 +236,7 @@ public:
 		const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::uint8_t, B1> out(lhs.__shape);
-		execute_logical_operation<core::LogicOperationKind::EQUAL>(out, lhs, rhs);
+		execute_logical_operation<core::LogicOperation::EQUAL>(out, lhs, rhs);
 		return out;
 	}
 
@@ -247,7 +247,7 @@ public:
 		const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::uint8_t, B1> out(lhs.__shape);
-		execute_logical_operation<core::LogicOperationKind::NOT_EQUAL>(out, lhs, rhs);
+		execute_logical_operation<core::LogicOperation::NOT_EQUAL>(out, lhs, rhs);
 		return out;
 	}
 
@@ -258,7 +258,7 @@ public:
 		const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::uint8_t, B1> out(lhs.__shape);
-		execute_logical_operation<core::LogicOperationKind::LESS>(out, lhs, rhs);
+		execute_logical_operation<core::LogicOperation::LESS>(out, lhs, rhs);
 		return out;
 	}
 
@@ -269,7 +269,7 @@ public:
 		const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::uint8_t, B1> out(lhs.__shape);
-		execute_logical_operation<core::LogicOperationKind::LESS_EQUAL>(out, lhs, rhs);
+		execute_logical_operation<core::LogicOperation::LESS_EQUAL>(out, lhs, rhs);
 		return out;
 	}
 
@@ -280,7 +280,7 @@ public:
 		const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::uint8_t, B1> out(lhs.__shape);
-		execute_logical_operation<core::LogicOperationKind::GREATER>(out, lhs, rhs);
+		execute_logical_operation<core::LogicOperation::GREATER>(out, lhs, rhs);
 		return out;
 	}
 
@@ -291,7 +291,7 @@ public:
 		const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::uint8_t, B1> out(lhs.__shape);
-		execute_logical_operation<core::LogicOperationKind::GREATER_EQUAL>(out, lhs, rhs);
+		execute_logical_operation<core::LogicOperation::GREATER_EQUAL>(out, lhs, rhs);
 		return out;
 	}
 
@@ -302,7 +302,7 @@ public:
 		const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::common_type_t<T1, T2>, B1> out(lhs.__shape);
-		execute_binary_operation<core::BinaryOperationKind::ADD>(out, lhs, rhs);
+		execute_binary_operation<core::BinaryOperation::ADD>(out, lhs, rhs);
 		return out;
 	}
 
@@ -313,7 +313,7 @@ public:
 		const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::common_type_t<T1, T2>, B1> out(lhs.__shape);
-		execute_binary_operation<core::BinaryOperationKind::SUB>(out, lhs, rhs);
+		execute_binary_operation<core::BinaryOperation::SUB>(out, lhs, rhs);
 		return out;
 	}
 
@@ -322,7 +322,7 @@ public:
 	operator*(const Tensor<T1, B1>& lhs, const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::common_type_t<T1, T2>, B1> out(lhs.__shape);
-		execute_binary_operation<core::BinaryOperationKind::MUL>(out, lhs, rhs);
+		execute_binary_operation<core::BinaryOperation::MUL>(out, lhs, rhs);
 		return out;
 	}
 
@@ -333,7 +333,7 @@ public:
 		const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::common_type_t<T1, T2>, B1> out(lhs.__shape);
-		execute_binary_operation<core::BinaryOperationKind::DIV>(out, lhs, rhs);
+		execute_binary_operation<core::BinaryOperation::DIV>(out, lhs, rhs);
 		return out;
 	}
 
@@ -344,7 +344,7 @@ public:
 		const Tensor<T2, B2>& rhs)
 	{
 		Tensor<std::common_type_t<T1, T2>, B1> out(lhs.__shape);
-		execute_binary_operation<core::BinaryOperationKind::POW>(out, lhs, rhs);
+		execute_binary_operation<core::BinaryOperation::POW>(out, lhs, rhs);
 		return out;
 	}
 
@@ -353,7 +353,7 @@ public:
 	operator+=(
 		const Tensor<T2, B2>& rhs)
 	{
-		execute_binary_operation<core::BinaryOperationKind::ADD>(*this, *this, rhs);
+		execute_binary_operation<core::BinaryOperation::ADD>(*this, *this, rhs);
 		return *this;
 	}
 
@@ -362,7 +362,7 @@ public:
 	operator-=(
 		const Tensor<T2, B2>& rhs)
 	{
-		execute_binary_operation<core::BinaryOperationKind::SUB>(*this, *this, rhs);
+		execute_binary_operation<core::BinaryOperation::SUB>(*this, *this, rhs);
 		return *this;
 	}
 
@@ -371,7 +371,7 @@ public:
 	operator*=(
 		const Tensor<T2, B2>& rhs)
 	{
-		execute_binary_operation<core::BinaryOperationKind::MUL>(*this, *this, rhs);
+		execute_binary_operation<core::BinaryOperation::MUL>(*this, *this, rhs);
 		return *this;
 	}
 
@@ -380,7 +380,7 @@ public:
 	operator/=(
 		const Tensor<T2, B2>& rhs)
 	{
-		execute_binary_operation<core::BinaryOperationKind::DIV>(*this, *this, rhs);
+		execute_binary_operation<core::BinaryOperation::DIV>(*this, *this, rhs);
 		return *this;
 	}
 
@@ -389,14 +389,14 @@ public:
 	operator^=(
 		const Tensor<T2, B2>& rhs)
 	{
-		execute_binary_operation<core::BinaryOperationKind::POW>(*this, *this, rhs);
+		execute_binary_operation<core::BinaryOperation::POW>(*this, *this, rhs);
 		return *this;
 	}
 
 	Tensor&
 	operator-()
 	{
-		execute_unary_operation<core::UnaryOperationKind::NEG>(*this);
+		execute_unary_operation<core::UnaryOperation::NEG>(*this);
 		return *this;
 	}
 
@@ -441,43 +441,43 @@ public:
 	void
 	abs()
 	{
-		core::cpu::operations::unary<core::UnaryOperationKind::ABS>(__ptr, __shape.length());
+		core::cpu::operations::unary<core::UnaryOperation::ABS>(__ptr, __shape.length());
 	}
 
 	void
 	sin()
 	{
-		core::cpu::operations::unary<core::UnaryOperationKind::SIN>(__ptr, __shape.length());
+		core::cpu::operations::unary<core::UnaryOperation::SIN>(__ptr, __shape.length());
 	}
 
 	void
 	cos()
 	{
-		core::cpu::operations::unary<core::UnaryOperationKind::COS>(__ptr, __shape.length());
+		core::cpu::operations::unary<core::UnaryOperation::COS>(__ptr, __shape.length());
 	}
 
 	void
 	exp()
 	{
-		core::cpu::operations::unary<core::UnaryOperationKind::EXP>(__ptr, __shape.length());
+		core::cpu::operations::unary<core::UnaryOperation::EXP>(__ptr, __shape.length());
 	}
 
 	void
 	log()
 	{
-		core::cpu::operations::unary<core::UnaryOperationKind::LOG>(__ptr, __shape.length());
+		core::cpu::operations::unary<core::UnaryOperation::LOG>(__ptr, __shape.length());
 	}
 
 	void
 	sqrt()
 	{
-		core::cpu::operations::unary<core::UnaryOperationKind::SQRT>(__ptr, __shape.length());
+		core::cpu::operations::unary<core::UnaryOperation::SQRT>(__ptr, __shape.length());
 	}
 
 	void
 	sigmoid()
 	{
-		core::cpu::operations::unary<core::UnaryOperationKind::SIGMOID>(__ptr, __shape.length());
+		core::cpu::operations::unary<core::UnaryOperation::SIGMOID>(__ptr, __shape.length());
 	}
 
 	template <std::integral... Is>
@@ -485,7 +485,7 @@ public:
 	sum(
 		Is... axis) const
 	{
-		return execute_reduction<core::ReductionOperationKind::SUM, T1>(*this, axis...);
+		return execute_reduction<core::ReductionOperation::SUM, T1>(*this, axis...);
 	}
 
 	template <std::integral... Is>
@@ -493,7 +493,7 @@ public:
 	prod(
 		Is... axis) const
 	{
-		return execute_reduction<core::ReductionOperationKind::PROD, T1>(*this, axis...);
+		return execute_reduction<core::ReductionOperation::PROD, T1>(*this, axis...);
 	}
 
 	template <std::integral... Is>
@@ -501,7 +501,7 @@ public:
 	min(
 		Is... axis) const
 	{
-		return execute_reduction<core::ReductionOperationKind::MIN, T1>(*this, axis...);
+		return execute_reduction<core::ReductionOperation::MIN, T1>(*this, axis...);
 	}
 
 	template <std::integral... Is>
@@ -509,7 +509,7 @@ public:
 	max(
 		Is... axis) const
 	{
-		return execute_reduction<core::ReductionOperationKind::MAX, T1>(*this, axis...);
+		return execute_reduction<core::ReductionOperation::MAX, T1>(*this, axis...);
 	}
 
 	template <std::integral... Is>
@@ -517,7 +517,7 @@ public:
 	mean(
 		Is... axis) const
 	{
-		return execute_reduction<core::ReductionOperationKind::MEAN, float>(*this, axis...);
+		return execute_reduction<core::ReductionOperation::MEAN, float>(*this, axis...);
 	}
 
 	template <std::integral... Is>
@@ -525,7 +525,7 @@ public:
 	var(
 		Is... axis) const
 	{
-		return execute_reduction<core::ReductionOperationKind::VAR, float>(*this, axis...);
+		return execute_reduction<core::ReductionOperation::VAR, float>(*this, axis...);
 	}
 
 	template <std::integral... Is>
@@ -533,7 +533,7 @@ public:
 	std(
 		Is... axis) const
 	{
-		return execute_reduction<core::ReductionOperationKind::STD, float>(*this, axis...);
+		return execute_reduction<core::ReductionOperation::STD, float>(*this, axis...);
 	}
 
 	template <std::integral... Is>
@@ -542,7 +542,19 @@ public:
 		Is... dims)
 	{
 		const std::uint64_t index = flat_index(dims...);
-		return __ptr[index];
+
+		if(index >= __shape.length())
+			{
+				throw std::invalid_argument("");
+			}
+
+		if constexpr(B1 == Backend::CPU)
+			{
+				return __ptr[index];
+			}
+		else
+			{
+			}
 	}
 
 	template <std::integral... Is>
@@ -551,7 +563,55 @@ public:
 		Is... dims) const
 	{
 		const std::uint64_t index = flat_index(dims...);
-		return __ptr[index];
+
+		if(index >= __shape.length())
+			{
+				throw std::invalid_argument("");
+			}
+
+		if constexpr(B1 == Backend::CPU)
+			{
+				return __ptr[index];
+			}
+		else
+			{
+			}
+	}
+
+	T1&
+	flat_item(
+		const std::uint64_t index)
+	{
+		if(index >= __shape.length())
+			{
+				throw std::invalid_argument("");
+			}
+
+		if constexpr(B1 == Backend::CPU)
+			{
+				return __ptr[index];
+			}
+		else
+			{
+			}
+	}
+
+	T1
+	flat_item(
+		const std::uint64_t index) const
+	{
+		if(index >= __shape.length())
+			{
+				throw std::invalid_argument("");
+			}
+
+		if constexpr(B1 == Backend::CPU)
+			{
+				return __ptr[index];
+			}
+		else
+			{
+			}
 	}
 
 	const Shape&
@@ -561,7 +621,7 @@ public:
 	}
 
 private:
-	template <core::BinaryOperationKind Kp, typename T2, Backend B2>
+	template <core::BinaryOperation Kp, typename T2, Backend B2>
 	static void
 	execute_binary_operation(
 		Tensor<std::common_type_t<T1, T2>, B1>& out,
@@ -602,7 +662,7 @@ private:
 			}
 	}
 
-	template <core::UnaryOperationKind Kp>
+	template <core::UnaryOperation Kp>
 	static void
 	execute_unary_operation(
 		Tensor<T1, B1>& out)
@@ -616,7 +676,7 @@ private:
 			}
 	}
 
-	template <core::LogicOperationKind Kp, typename T2, Backend B2>
+	template <core::LogicOperation Kp, typename T2, Backend B2>
 	static void
 	execute_logical_operation(
 		Tensor<std::uint8_t, B1>& out,
@@ -639,7 +699,7 @@ private:
 			}
 	}
 
-	template <core::ReductionOperationKind Kp, typename T2, std::integral... Is>
+	template <core::ReductionOperation Kp, typename T2, std::integral... Is>
 	static auto
 	execute_reduction(
 		const Tensor<T1, B1>& src,
@@ -803,7 +863,6 @@ private:
 	std::uint64_t __cuda_stream = 0;
 	Shape         __shape       = {};
 };
-
 }
 
 #endif

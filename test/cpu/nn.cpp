@@ -35,13 +35,15 @@ expect_tensor_eq(
 
 class ParameterModule : public vext::nn::Module<vext::Backend::CPU>
 {
+	VEXT_MODULE(vext::Backend::CPU);
+
 public:
 	ParameterModule()
 		: first({ 1.0f, 2.0f }),
 		  second({ { 3.0f, 4.0f }, { 5.0f, 6.0f } })
 	{
-		this->template add<vext::InitializationKind::XAVIER_NORMAL>(&first);
-		this->template add<vext::InitializationKind::XAVIER_NORMAL>(&second);
+		add<vext::Initialization::XAVIER_NORMAL>(&first);
+		add<vext::Initialization::XAVIER_NORMAL>(&second);
 	}
 
 	vext::Tensor<float> first;
@@ -50,11 +52,14 @@ public:
 
 class ParentModule : public vext::nn::Module<vext::Backend::CPU>
 {
+	VEXT_MODULE(vext::Backend::CPU);
+
 public:
 	ParentModule()
 		: parent_parameter({ 7.0f })
 	{
-		this->template add<vext::InitializationKind::XAVIER_NORMAL>(&parent_parameter);
+		add<vext::Initialization::XAVIER_NORMAL>(&parent_parameter);
+
 		add(&left);
 		add(&right);
 	}
@@ -79,22 +84,24 @@ TEST(NnCpu, ModuleIteratesRegisteredParameters)
 	ParameterModule module;
 
 	auto it = module.begin();
+
 	ASSERT_NE(it, module.end());
 	expect_tensor_eq(*it, module.first);
 
 	++it;
+
 	ASSERT_NE(it, module.end());
 	expect_tensor_eq(*it, module.second);
 
 	++it;
+
 	EXPECT_EQ(it, module.end());
 }
 
 TEST(NnCpu, ModuleIteratorAllowsParameterMutation)
 {
 	ParameterModule module;
-
-	(*module.begin()).item(1) = 42.0f;
+	module.begin()->item(1) = 42.0f;
 
 	expect_tensor_eq(module.first, vext::Tensor<float>({ 1.0f, 42.0f }));
 }
@@ -107,11 +114,12 @@ TEST(NnCpu, ConstModuleIteratesConstParameters)
 	static_assert(std::is_const_v<std::remove_reference_t<decltype(*it)>>);
 
 	ASSERT_NE(it, module.end());
-	expect_shape_eq((*it).shape(), { 2 });
+	expect_shape_eq(it->shape(), { 2 });
 
 	++it;
+
 	ASSERT_NE(it, module.end());
-	expect_shape_eq((*it).shape(), { 2, 2 });
+	expect_shape_eq(it->shape(), { 2, 2 });
 }
 
 TEST(NnCpu, ModuleRecursivelyIteratesChildParameters)
@@ -119,6 +127,7 @@ TEST(NnCpu, ModuleRecursivelyIteratesChildParameters)
 	ParentModule module;
 
 	std::vector<vext::Shape> shapes;
+
 	for(const auto& parameter : module)
 		{
 			shapes.emplace_back(parameter.shape());
@@ -137,14 +146,17 @@ TEST(NnCpu, LinearRegistersWeightAndBiasParameters)
 	const vext::nn::Linear<vext::Backend::CPU> linear(3, 2);
 
 	auto it = linear.begin();
+
 	ASSERT_NE(it, linear.end());
-	expect_shape_eq((*it).shape(), { 3, 2 });
+	expect_shape_eq(it->shape(), { 3, 2 });
 
 	++it;
+
 	ASSERT_NE(it, linear.end());
-	expect_shape_eq((*it).shape(), { 2 });
+	expect_shape_eq(it->shape(), { 2 });
 
 	++it;
+
 	EXPECT_EQ(it, linear.end());
 }
 
@@ -154,11 +166,15 @@ TEST(NnCpu, LinearComputesInputMatmulWeightPlusBias)
 	const vext::Tensor<float>                  input({ { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } });
 
 	auto it = linear.begin();
+
 	ASSERT_NE(it, linear.end());
+
 	const vext::Tensor<float> weight(*it);
 
 	++it;
+
 	ASSERT_NE(it, linear.end());
+
 	const vext::Tensor<float> bias(*it);
 
 	const auto output   = linear(input);

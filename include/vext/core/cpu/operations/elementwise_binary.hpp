@@ -9,7 +9,7 @@
 namespace vext::core::cpu::operations
 {
 
-template <BinaryOperationKind Kp, typename T1, typename T2>
+template <BinaryOperation Kp, typename T1, typename T2>
 static void
 binary(
 	std::common_type_t<T1, T2>* out,
@@ -19,38 +19,38 @@ binary(
 {
 	for(std::uint64_t i = 0; i < N; ++i)
 		{
-			if constexpr(Kp == BinaryOperationKind::ADD)
+			if constexpr(Kp == BinaryOperation::ADD)
 				{
 					out[i] = a[i] + b[i];
 				}
-			else if constexpr(Kp == BinaryOperationKind::SUB)
+			else if constexpr(Kp == BinaryOperation::SUB)
 				{
 					out[i] = a[i] - b[i];
 				}
-			else if constexpr(Kp == BinaryOperationKind::MUL)
+			else if constexpr(Kp == BinaryOperation::MUL)
 				{
 					out[i] = a[i] * b[i];
 				}
-			else if constexpr(Kp == BinaryOperationKind::DIV)
+			else if constexpr(Kp == BinaryOperation::DIV)
 				{
 					out[i] = a[i] / b[i];
 				}
-			else if constexpr(Kp == BinaryOperationKind::POW)
+			else if constexpr(Kp == BinaryOperation::POW)
 				{
 					out[i] = std::pow(a[i], b[i]);
 				}
-			else if constexpr(Kp == BinaryOperationKind::MIN)
+			else if constexpr(Kp == BinaryOperation::MIN)
 				{
 					out[i] = std::min(a[i], b[i]);
 				}
-			else if constexpr(Kp == BinaryOperationKind::MAX)
+			else if constexpr(Kp == BinaryOperation::MAX)
 				{
 					out[i] = std::max(a[i], b[i]);
 				}
 		}
 }
 
-template <BinaryOperationKind Kp, typename T1, typename T2>
+template <BinaryOperation Kp, typename T1, typename T2>
 static void
 binary_with_broadcast(
 	std::common_type_t<T1, T2>*       out,
@@ -69,37 +69,37 @@ binary_with_broadcast(
 
 	for(std::uint64_t i = 0; i < N; ++i)
 		{
-			if constexpr(Kp == BinaryOperationKind::ADD)
+			if constexpr(Kp == BinaryOperation::ADD)
 				{
 
 					out[i] = a[i] + b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOperationKind::SUB)
+			else if constexpr(Kp == BinaryOperation::SUB)
 				{
 
 					out[i] = a[i] - b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOperationKind::MUL)
+			else if constexpr(Kp == BinaryOperation::MUL)
 				{
 
 					out[i] = a[i] * b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOperationKind::DIV)
+			else if constexpr(Kp == BinaryOperation::DIV)
 				{
 
 					out[i] = a[i] / b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOperationKind::POW)
+			else if constexpr(Kp == BinaryOperation::POW)
 				{
 
 					out[i] = std::pow(a[i], b[b_offset]);
 				}
-			else if constexpr(Kp == BinaryOperationKind::MIN)
+			else if constexpr(Kp == BinaryOperation::MIN)
 				{
 
 					out[i] = std::min(a[i], b[b_offset]);
 				}
-			else if constexpr(Kp == BinaryOperationKind::MAX)
+			else if constexpr(Kp == BinaryOperation::MAX)
 				{
 
 					out[i] = std::max(a[i], b[b_offset]);

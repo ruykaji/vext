@@ -6,7 +6,7 @@
 namespace vext::core::cpu::operations
 {
 
-template <LogicOperationKind Kp, typename T1, typename T2>
+template <LogicOperation Kp, typename T1, typename T2>
 static void
 logical(
 	std::uint8_t*       out,
@@ -16,27 +16,27 @@ logical(
 {
 	for(std::uint64_t i = 0; i < N; ++i)
 		{
-			if constexpr(Kp == LogicOperationKind::EQUAL)
+			if constexpr(Kp == LogicOperation::EQUAL)
 				{
 					out[i] = a[i] == b[i];
 				}
-			else if constexpr(Kp == LogicOperationKind::NOT_EQUAL)
+			else if constexpr(Kp == LogicOperation::NOT_EQUAL)
 				{
 					out[i] = a[i] != b[i];
 				}
-			else if constexpr(Kp == LogicOperationKind::LESS)
+			else if constexpr(Kp == LogicOperation::LESS)
 				{
 					out[i] = a[i] < b[i];
 				}
-			else if constexpr(Kp == LogicOperationKind::LESS_EQUAL)
+			else if constexpr(Kp == LogicOperation::LESS_EQUAL)
 				{
 					out[i] = a[i] <= b[i];
 				}
-			else if constexpr(Kp == LogicOperationKind::GREATER)
+			else if constexpr(Kp == LogicOperation::GREATER)
 				{
 					out[i] = a[i] > b[i];
 				}
-			else if constexpr(Kp == LogicOperationKind::GREATER_EQUAL)
+			elseif constexpr(Kp == LogicOperation::GREATER_EQUAL)
 				{
 					out[i] = a[i] >= b[i];
 				}

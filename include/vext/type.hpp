@@ -12,7 +12,7 @@ enum class Backend : std::uint8_t
 	CUDA
 };
 
-enum class ReduceKind : std::uint8_t
+enum class Reduce : std::uint8_t
 {
 	NONE = 0,
 	ADD,
@@ -22,7 +22,7 @@ enum class ReduceKind : std::uint8_t
 	MEAN
 };
 
-enum class InitializationKind : std::uint8_t
+enum class Initialization : std::uint8_t
 {
 	NONE = 0,
 	XAVIER_NORMAL,

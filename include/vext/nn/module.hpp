@@ -14,19 +14,20 @@ template <typename Tp>
 class ParameterIterator
 {
 	using vector_iterator = std::conditional_t<std::is_const_v<Tp>, typename std::vector<Tensor<float>*>::const_iterator, typename std::vector<Tensor<float>*>::iterator>;
+	using module_pointer  = std::conditional_t<std::is_const_v<Tp>, Tp const*, Tp*>;
 
 public:
 	using iterator_category = std::input_iterator_tag;
 	using value_type        = Tensor<float>;
 	using difference_type   = std::ptrdiff_t;
-	using pointer           = std::conditional_t<std::is_const_v<Tp>, Tp const*, Tp*>;
+	using pointer           = std::conditional_t<std::is_const_v<Tp>, Tensor<float> const*, Tensor<float>*>;
 	using reference         = std::conditional_t<std::is_const_v<Tp>, Tensor<float> const&, Tensor<float>&>;
 
 public:
 	ParameterIterator() = default;
 
 	ParameterIterator(
-		pointer module)
+		module_pointer module)
 	{
 		if(module != nullptr)
 			{
@@ -62,6 +63,12 @@ public:
 		return tmp;
 	}
 
+	pointer
+	operator->() const noexcept
+	{
+		return *__parameters_itr;
+	}
+
 	reference
 	operator*() const noexcept
 	{
@@ -95,7 +102,7 @@ private:
 	{
 		while(!__stack.empty())
 			{
-				pointer module = __stack.top();
+				module_pointer module = __stack.top();
 				__stack.pop();
 
 				for(auto child : module->__modules)
@@ -119,10 +126,10 @@ private:
 	}
 
 private:
-	pointer             __module         = nullptr;
-	vector_iterator     __parameters_itr = {};
-	vector_iterator     __parameters_end = {};
-	std::stack<pointer> __stack          = {};
+	module_pointer             __module         = nullptr;
+	vector_iterator            __parameters_itr = {};
+	vector_iterator            __parameters_end = {};
+	std::stack<module_pointer> __stack          = {};
 };
 
 }
@@ -169,7 +176,7 @@ public:
 	}
 
 protected:
-	template <InitializationKind Kp>
+	template <Initialization Kp>
 	void
 	add(
 		Tensor<float, Bp>* param,
@@ -177,19 +184,19 @@ protected:
 	{
 		Tensor<float, Bp>& ref = *__parameters.emplace_back(param);
 
-		if constexpr(Kp == InitializationKind::XAVIER_NORMAL)
+		if constexpr(Kp == Initialization::XAVIER_NORMAL)
 			{
 				xavier_normal(ref);
 			}
-		else if constexpr(Kp == InitializationKind::XAVIER_UNIFORM)
+		else if constexpr(Kp == Initialization::XAVIER_UNIFORM)
 			{
 				xavier_uniform(ref);
 			}
-		else if constexpr(Kp == InitializationKind::KAIMING_NORMAL)
+		else if constexpr(Kp == Initialization::KAIMING_NORMAL)
 			{
 				kaiming_normal(ref, alph);
 			}
-		else if constexpr(Kp == InitializationKind::KAIMING_UNIFORM)
+		else if constexpr(Kp == Initialization::KAIMING_UNIFORM)
 			{
 				kaiming_uniform(ref, alph);
 			}
@@ -309,5 +316,8 @@ private:
 };
 
 }
+
+#define VEXT_MODULE(param) \
+	using vext::nn::Module<param>::add;
 
 #endif

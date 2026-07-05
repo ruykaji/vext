@@ -10,7 +10,7 @@
 namespace vext::core::cpu::operations
 {
 
-template <ReductionOperationKind Kp, typename T1, typename T2>
+template <ReductionOperation Kp, typename T1, typename T2>
 void
 reduce(
 	T1*                               out,
@@ -34,15 +34,15 @@ reduce(
 		{
 			T1 accumulator = 0;
 
-			if constexpr(Kp == ReductionOperationKind::PROD)
+			if constexpr(Kp == ReductionOperation::PROD)
 				{
 					accumulator = 1;
 				}
-			else if constexpr(Kp == ReductionOperationKind::MIN)
+			else if constexpr(Kp == ReductionOperation::MIN)
 				{
 					accumulator = std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == ReductionOperationKind::MAX)
+			else if constexpr(Kp == ReductionOperation::MAX)
 				{
 					accumulator = std::numeric_limits<T1>::lowest();
 				}
@@ -56,15 +56,15 @@ reduce(
 
 			for(std::uint64_t j = 0; j < M; ++j)
 				{
-					if constexpr(Kp == ReductionOperationKind::PROD)
+					if constexpr(Kp == ReductionOperation::PROD)
 						{
 							accumulator *= static_cast<T1>(src[keep_offset + reduce_offset]);
 						}
-					else if constexpr(Kp == ReductionOperationKind::MIN)
+					else if constexpr(Kp == ReductionOperation::MIN)
 						{
 							accumulator = std::min(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
-					else if constexpr(Kp == ReductionOperationKind::MAX)
+					else if constexpr(Kp == ReductionOperation::MAX)
 						{
 							accumulator = std::max(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
@@ -93,7 +93,7 @@ reduce(
 						}
 				}
 
-			if constexpr(Kp == ReductionOperationKind::VAR || Kp == ReductionOperationKind::STD)
+			if constexpr(Kp == ReductionOperation::VAR || Kp == ReductionOperationKind::STD)
 				{
 					const float mean       = static_cast<float>(accumulator) / M;
 					float       dispersion = 0.0f;
@@ -129,7 +129,7 @@ reduce(
 								}
 						}
 
-					if constexpr(Kp == ReductionOperationKind::VAR)
+					if constexpr(Kp == ReductionOperation::VAR)
 						{
 							out[i] = dispersion / M;
 						}
@@ -138,7 +138,7 @@ reduce(
 							out[i] = std::sqrt(dispersion / M);
 						}
 				}
-			else if constexpr(Kp == ReductionOperationKind::MEAN)
+			else if constexpr(Kp == ReductionOperation::MEAN)
 				{
 					out[i] = accumulator / M;
 				}
