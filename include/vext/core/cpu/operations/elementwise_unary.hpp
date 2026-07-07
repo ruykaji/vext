@@ -8,12 +8,15 @@
 namespace vext::core::cpu::operations
 {
 
-template <UnaryOperation Kp, typename T1>
+template <UnaryOperation Kp, typename T1, std::floating_point... Is>
 static void
 unary(
 	T1*                 out,
-	const std::uint64_t N)
+	const std::uint64_t N,
+	Is... param)
 {
+	T1 accumulate = 0;
+
 	for(std::uint64_t i = 0; i < N; ++i)
 		{
 			if constexpr(Kp == UnaryOperation::ABS)
@@ -27,6 +30,10 @@ unary(
 			else if constexpr(Kp == UnaryOperation::COS)
 				{
 					out[i] = std::cos(out[i]);
+				}
+			else if constexpr(Kp == UnaryOperation::TANH)
+				{
+					out[i] = std::tanh(out[i]);
 				}
 			else if constexpr(Kp == UnaryOperation::NEG)
 				{
@@ -44,9 +51,83 @@ unary(
 				{
 					out[i] = std::sqrt(out[i]);
 				}
+			else if constexpr(Kp == UnaryOperation::SQUARE)
+				{
+					out[i] *= out[i];
+				}
+			else if constexpr(Kp == UnaryOperation::ROUND)
+				{
+					out[i] = std::round(out[i]);
+				}
 			else if constexpr(Kp == UnaryOperation::SIGMOID)
 				{
 					out[i] = 1.0f / (1.0f + std::exp(-out[i]));
+				}
+			else if constexpr(Kp == UnaryOperation::SOFT_RELU)
+				{
+					out[i] = std::log(1.0f + std::exp(out[i]));
+				}
+			else if constexpr(Kp == UnaryOperation::RELU)
+				{
+					out[i] = out[i] > 0 ? out[i] : 0;
+				}
+			else if constexpr(Kp == UnaryOperation::SOFTMAX || Kp == UnaryOperation::LOGSOFTMAX)
+				{
+					out[i] = std::exp(out[i]);
+				}
+			else if constexpr(Kp == UnaryOperation::SOFTMIN)
+				{
+					out[i] = std::exp(-out[i]);
+				}
+			else if constexpr(Kp == UnaryOperation::LEAKY_RELU)
+				{
+					const float a = static_cast<float>(param...[0]);
+					out[i]        = out[i] > 0 ? out[i] : (a * out[i]);
+				}
+			else if constexpr(Kp == UnaryOperation::ELU)
+				{
+					const float a = static_cast<float>(param...[0]);
+					out[i]        = out[i] > 0 ? out[i] : a * (std::exp(out[i]) - 1.0f);
+				}
+			else if constexpr(Kp == UnaryOperation::SWISH)
+				{
+					const float a = static_cast<float>(param...[0]);
+					out[i]        = out[i] / (1.0f + std::exp(-a * out[i]));
+				}
+			else if constexpr(Kp == UnaryOperation::LINEAR)
+				{
+					const float a = static_cast<float>(param...[0]);
+					const float b = static_cast<float>(param...[1]);
+					out[i]        = a * out[i] + b;
+				}
+			else if constexpr(Kp == UnaryOperation::CLIP)
+				{
+					const float a = static_cast<float>(param...[0]);
+					const float b = static_cast<float>(param...[1]);
+					out[i]        = std::max(a, std::min(b, out[i]));
+				}
+			else if constexpr(Kp == UnaryOperation::POW)
+				{
+					const float a = static_cast<float>(param...[0]);
+					const float b = static_cast<float>(param...[1]);
+					out[i]        = a * std::pow(out[i], b);
+				}
+
+			if constexpr(Kp == UnaryOperation::SOFTMAX || Kp == UnaryOperation::SOFTMIN || Kp == UnaryOperation::LOGSOFTMAX)
+				{
+					accumulate += out[i];
+				}
+		}
+
+	for(std::uint64_t i = 0; i < N; ++i)
+		{
+			if constexpr(Kp == UnaryOperation::SOFTMAX || Kp == UnaryOperation::SOFTMIN)
+				{
+					out[i] /= accumulate;
+				}
+			else if constexpr(Kp == UnaryOperation::LOGSOFTMAX)
+				{
+					out[i] = std::log(out[i] / accumulate);
 				}
 		}
 }

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <initializer_list>
+#include <numbers>
 #include <type_traits>
 #include <vector>
 
@@ -51,6 +52,21 @@ expect_scalar_near(
 	EXPECT_NEAR(tensor.item(0), expected, tolerance);
 }
 
+template <typename T1, typename T2>
+void
+expect_tensor_near(
+	const vext::Tensor<T1>& actual,
+	const vext::Tensor<T2>& expected,
+	const float             tolerance = 1e-5f)
+{
+	ASSERT_EQ(actual.shape(), expected.shape());
+
+	for(std::uint64_t i = 0; i < actual.shape().length(); ++i)
+		{
+			EXPECT_NEAR(static_cast<float>(actual.flat_item(i)), static_cast<float>(expected.flat_item(i)), tolerance);
+		}
+}
+
 }
 
 TEST(TensorCpu, ConstructsFromDimensionsWithZeroInitializedStorage)
@@ -69,6 +85,14 @@ TEST(TensorCpu, ConstructsFromInitializerList)
 
 	expect_shape_eq(tensor.shape(), { 2, 3 });
 	expect_tensor_eq(tensor, expected);
+}
+
+TEST(TensorCpu, ConstructsFromShape)
+{
+	const vext::Tensor<float> tensor(vext::Shape(2, 2));
+
+	expect_shape_eq(tensor.shape(), { 2, 2 });
+	expect_tensor_eq(tensor, vext::Tensor<float>({ { 0.0f, 0.0f }, { 0.0f, 0.0f } }));
 }
 
 TEST(TensorCpu, InitializerListRejectsInconsistentShape)
@@ -113,6 +137,39 @@ TEST(TensorCpu, CopyAssignmentCreatesIndependentStorage)
 
 	expect_tensor_eq(target, vext::Tensor<float>({ 7.0f, 9.0f }));
 	expect_tensor_eq(source, vext::Tensor<float>({ 100.0f, 9.0f }));
+}
+
+TEST(TensorCpu, MoveConstructorTransfersStorageAndLeavesSourceEmpty)
+{
+	vext::Tensor<float> source({ { 1.0f, 2.0f }, { 3.0f, 4.0f } });
+
+	const vext::Tensor<float> moved(std::move(source));
+
+	expect_tensor_eq(moved, vext::Tensor<float>({ { 1.0f, 2.0f }, { 3.0f, 4.0f } }));
+	expect_shape_eq(source.shape(), {});
+}
+
+TEST(TensorCpu, MoveAssignmentTransfersStorageAndLeavesSourceEmpty)
+{
+	vext::Tensor<float> source({ 3.0f, 4.0f });
+	vext::Tensor<float> target({ 1.0f });
+
+	target = std::move(source);
+
+	expect_tensor_eq(target, vext::Tensor<float>({ 3.0f, 4.0f }));
+	expect_shape_eq(source.shape(), {});
+}
+
+TEST(TensorCpu, FlatItemReadsWritesAndChecksFlatIndices)
+{
+	vext::Tensor<std::int32_t> tensor({ { 1, 2, 3 }, { 4, 5, 6 } });
+
+	tensor.flat_item(4) = 50;
+
+	EXPECT_EQ(tensor.flat_item(0), 1);
+	EXPECT_EQ(tensor.flat_item(4), 50);
+	expect_tensor_eq(tensor, vext::Tensor<std::int32_t>({ { 1, 2, 3 }, { 4, 50, 6 } }));
+	EXPECT_THROW((void)tensor.flat_item(6), std::invalid_argument);
 }
 
 TEST(TensorCpu, LogicalComparisonsProduceMaskTensors)
@@ -211,20 +268,113 @@ TEST(TensorCpu, InPlaceArithmeticMutatesLeftHandSide)
 
 	lhs /= rhs;
 	expect_tensor_eq(lhs, vext::Tensor<std::int32_t>({ 10, 20, 30 }));
+
+	lhs ^= rhs;
+	expect_tensor_eq(lhs, vext::Tensor<std::int32_t>({ 100, 160000, 24300000 }));
 }
 
-TEST(TensorCpu, UnaryOperationsMutateTensor)
+TEST(TensorCpu, PreluMutatesTensorWithElementwiseSlope)
 {
-	vext::Tensor<float> tensor({ -1.0f, 0.0f, 4.0f });
+	vext::Tensor<float>       values({ -2.0f, -1.0f, 0.0f, 3.0f });
+	const vext::Tensor<float> slopes({ 0.25f, 0.5f, 0.75f, 1.0f });
 
-	tensor.abs();
-	expect_tensor_eq(tensor, vext::Tensor<float>({ 1.0f, 0.0f, 4.0f }));
+	values.prelu(slopes);
 
-	tensor.sqrt();
-	expect_tensor_eq(tensor, vext::Tensor<float>({ 1.0f, 0.0f, 2.0f }));
+	expect_tensor_near(values, vext::Tensor<float>({ -0.5f, -0.5f, 0.0f, 3.0f }));
+}
 
-	tensor.exp();
-	expect_tensor_eq(tensor, vext::Tensor<float>({ std::exp(1.0f), 1.0f, std::exp(2.0f) }));
+TEST(TensorCpu, ParameterlessUnaryOperationsMutateTensor)
+{
+	vext::Tensor<float> abs_tensor({ -1.0f, 0.0f, 4.0f });
+	abs_tensor.abs();
+	expect_tensor_near(abs_tensor, vext::Tensor<float>({ 1.0f, 0.0f, 4.0f }));
+
+	vext::Tensor<float> sin_tensor({ 0.0f, static_cast<float>(std::numbers::pi / 2.0) });
+	sin_tensor.sin();
+	expect_tensor_near(sin_tensor, vext::Tensor<float>({ 0.0f, 1.0f }));
+
+	vext::Tensor<float> cos_tensor({ 0.0f, static_cast<float>(std::numbers::pi) });
+	cos_tensor.cos();
+	expect_tensor_near(cos_tensor, vext::Tensor<float>({ 1.0f, -1.0f }));
+
+	vext::Tensor<float> exp_tensor({ 0.0f, 1.0f });
+	exp_tensor.exp();
+	expect_tensor_near(exp_tensor, vext::Tensor<float>({ 1.0f, std::exp(1.0f) }));
+
+	vext::Tensor<float> log_tensor({ 1.0f, std::exp(2.0f) });
+	log_tensor.log();
+	expect_tensor_near(log_tensor, vext::Tensor<float>({ 0.0f, 2.0f }));
+
+	vext::Tensor<float> sqrt_tensor({ 1.0f, 4.0f, 9.0f });
+	sqrt_tensor.sqrt();
+	expect_tensor_near(sqrt_tensor, vext::Tensor<float>({ 1.0f, 2.0f, 3.0f }));
+
+	vext::Tensor<float> square_tensor({ -2.0f, 3.0f });
+	square_tensor.square();
+	expect_tensor_near(square_tensor, vext::Tensor<float>({ 4.0f, 9.0f }));
+
+	vext::Tensor<float> round_tensor({ 1.2f, 1.5f, -1.6f });
+	round_tensor.round();
+	expect_tensor_near(round_tensor, vext::Tensor<float>({ 1.0f, 2.0f, -2.0f }));
+}
+
+TEST(TensorCpu, ActivationUnaryOperationsMutateTensor)
+{
+	vext::Tensor<float> sigmoid_tensor({ 0.0f, 2.0f });
+	sigmoid_tensor.sigmoid();
+	expect_tensor_near(sigmoid_tensor, vext::Tensor<float>({ 0.5f, 1.0f / (1.0f + std::exp(-2.0f)) }));
+
+	vext::Tensor<float> soft_relu_tensor({ 0.0f, 2.0f });
+	soft_relu_tensor.soft_relu();
+	expect_tensor_near(soft_relu_tensor, vext::Tensor<float>({ std::log(2.0f), std::log(1.0f + std::exp(2.0f)) }));
+
+	vext::Tensor<float> relu_tensor({ -2.0f, 0.0f, 3.0f });
+	relu_tensor.relu();
+	expect_tensor_near(relu_tensor, vext::Tensor<float>({ 0.0f, 0.0f, 3.0f }));
+
+	vext::Tensor<float> leaky_relu_tensor({ -2.0f, 3.0f });
+	leaky_relu_tensor.leaky_relu(0.25f);
+	expect_tensor_near(leaky_relu_tensor, vext::Tensor<float>({ -0.5f, 3.0f }));
+
+	vext::Tensor<float> elu_tensor({ -1.0f, 2.0f });
+	elu_tensor.elu(2.0f);
+	expect_tensor_near(elu_tensor, vext::Tensor<float>({ 2.0f * (std::exp(-1.0f) - 1.0f), 2.0f }));
+
+	vext::Tensor<float> swish_tensor({ -1.0f, 2.0f });
+	swish_tensor.swish(1.0f);
+	expect_tensor_near(swish_tensor, vext::Tensor<float>({ -1.0f / (1.0f + std::exp(1.0f)), 2.0f / (1.0f + std::exp(-2.0f)) }));
+}
+
+TEST(TensorCpu, NormalizationUnaryOperationsMutateTensor)
+{
+	vext::Tensor<float> softmax_tensor({ 1.0f, 2.0f, 3.0f });
+	softmax_tensor.softmax();
+	const float softmax_sum = std::exp(1.0f) + std::exp(2.0f) + std::exp(3.0f);
+	expect_tensor_near(softmax_tensor, vext::Tensor<float>({ std::exp(1.0f) / softmax_sum, std::exp(2.0f) / softmax_sum, std::exp(3.0f) / softmax_sum }));
+
+	vext::Tensor<float> softmin_tensor({ 1.0f, 2.0f, 3.0f });
+	softmin_tensor.softmin();
+	const float softmin_sum = std::exp(-1.0f) + std::exp(-2.0f) + std::exp(-3.0f);
+	expect_tensor_near(softmin_tensor, vext::Tensor<float>({ std::exp(-1.0f) / softmin_sum, std::exp(-2.0f) / softmin_sum, std::exp(-3.0f) / softmin_sum }));
+
+	vext::Tensor<float> log_softmax_tensor({ 1.0f, 2.0f, 3.0f });
+	log_softmax_tensor.log_softmax();
+	expect_tensor_near(log_softmax_tensor, vext::Tensor<float>({ std::log(std::exp(1.0f) / softmax_sum), std::log(std::exp(2.0f) / softmax_sum), std::log(std::exp(3.0f) / softmax_sum) }));
+}
+
+TEST(TensorCpu, ParameterizedUnaryOperationsMutateTensor)
+{
+	vext::Tensor<float> linear_tensor({ -1.0f, 2.0f });
+	linear_tensor.linear(2.0f, 3.0f);
+	expect_tensor_near(linear_tensor, vext::Tensor<float>({ 1.0f, 7.0f }));
+
+	vext::Tensor<float> clip_tensor({ -2.0f, 0.5f, 3.0f });
+	clip_tensor.clip(-1.0f, 1.0f);
+	expect_tensor_near(clip_tensor, vext::Tensor<float>({ -1.0f, 0.5f, 1.0f }));
+
+	vext::Tensor<float> pow_tensor({ 2.0f, 3.0f });
+	pow_tensor.pow(2.0f, 3.0f);
+	expect_tensor_near(pow_tensor, vext::Tensor<float>({ 16.0f, 54.0f }));
 }
 
 TEST(TensorCpu, UnaryMinusNegatesInPlace)
@@ -276,6 +426,20 @@ TEST(TensorCpu, ReductionRejectsMissingAxis)
 	EXPECT_THROW((void)tensor.sum(2), std::runtime_error);
 }
 
+TEST(TensorCpu, ReductionRejectsDuplicateAxis)
+{
+	const vext::Tensor<float> tensor({ { 1.0f, 2.0f }, { 3.0f, 4.0f } });
+
+	EXPECT_THROW((void)tensor.sum(0, 0), std::runtime_error);
+}
+
+TEST(TensorCpu, ReductionSupportsNegativeAxis)
+{
+	const vext::Tensor<float> tensor({ { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } });
+
+	expect_tensor_eq(tensor.sum(-1), vext::Tensor<float>({ 6.0f, 15.0f }));
+}
+
 TEST(TensorCpu, MatmulComputesMatrixProduct)
 {
 	const vext::Tensor<float> lhs({ { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } });
@@ -284,6 +448,16 @@ TEST(TensorCpu, MatmulComputesMatrixProduct)
 	const auto result = lhs.matmul(rhs);
 
 	expect_tensor_eq(result, vext::Tensor<float>({ { 58.0f, 64.0f }, { 139.0f, 154.0f } }));
+}
+
+TEST(TensorCpu, MatmulSupportsBatchedLeftHandTensor)
+{
+	const vext::Tensor<float> lhs({ { { 1.0f, 2.0f }, { 3.0f, 4.0f } }, { { 5.0f, 6.0f }, { 7.0f, 8.0f } } });
+	const vext::Tensor<float> rhs({ { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } });
+
+	const auto result = lhs.matmul(rhs);
+
+	expect_tensor_eq(result, vext::Tensor<float>({ { { 9.0f, 12.0f, 15.0f }, { 19.0f, 26.0f, 33.0f } }, { { 29.0f, 40.0f, 51.0f }, { 39.0f, 54.0f, 69.0f } } }));
 }
 
 TEST(TensorCpu, MatmulRejectsIncompatibleShapes)

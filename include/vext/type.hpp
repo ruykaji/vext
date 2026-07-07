@@ -14,21 +14,17 @@ enum class Backend : std::uint8_t
 
 enum class Reduce : std::uint8_t
 {
-	NONE = 0,
-	ADD,
+	ADD = 0,
 	MUL,
 	MIN,
 	MAX,
 	MEAN
 };
 
-enum class Initialization : std::uint8_t
+enum class Mutation : std::uint8_t
 {
-	NONE = 0,
-	XAVIER_NORMAL,
-	XAVIER_UNIFORM,
-	KAIMING_NORMAL,
-	KAIMING_UNIFORM,
+	IN_PLACE = 0,
+	COPY
 };
 
 }

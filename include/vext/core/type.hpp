@@ -8,33 +8,48 @@ namespace vext::core
 
 enum class UnaryOperation : std::uint8_t
 {
-	NONE = 0,
-	ABS,
+	/** -- NO PARAMETERS REQUIRED -- */
+	ABS = 0,
 	SIN,
 	COS,
+	TANH,
 	NEG,
 	EXP,
 	LOG,
 	SQRT,
-	SIGMOID
+	SQUARE,
+	ROUND,
+	SIGMOID,
+	SOFT_RELU,
+	RELU,
+	SOFTMAX,
+	SOFTMIN,
+	LOGSOFTMAX,
+	/** -- REQUIRES ALPHA -- */
+	LEAKY_RELU,
+	ELU,
+	SWISH,
+	/** -- REQUIRES ALPHA AND BETA -- */
+	LINEAR,
+	CLIP,
+	POW
 };
 
 enum class BinaryOperation : std::uint8_t
 {
-	NONE = 0,
-	ADD,
+	ADD = 0,
 	SUB,
 	MUL,
 	DIV,
 	POW,
 	MIN,
-	MAX
+	MAX,
+	PRELU
 };
 
 enum class LogicOperation : std::uint8_t
 {
-	NONE = 0,
-	EQUAL,
+	EQUAL = 0,
 	NOT_EQUAL,
 	LESS,
 	LESS_EQUAL,
@@ -44,8 +59,7 @@ enum class LogicOperation : std::uint8_t
 
 enum class ReductionOperation : std::uint8_t
 {
-	NONE = 0,
-	SUM,
+	SUM = 0,
 	MEAN,
 	MAX,
 	MIN,

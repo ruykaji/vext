@@ -73,16 +73,18 @@ size(
 	return ((requested_size + LARGE_POOL_BOUNDARY - 1) / LARGE_POOL_BOUNDARY) * LARGE_POOL_BOUNDARY;
 }
 
-static inline Block*
-split_block(
+static inline std::pair<Block*, Block*>
+maybe_split_block(
 	Block*              block,
 	const std::uint64_t requested_size)
 {
 	const std::uint64_t boundary = requested_size < SIZE_THRESHOLD ? SMALL_POOL_BOUNDARY : LARGE_POOL_BOUNDARY;
 
+	Block* remainder = nullptr;
+
 	if(const std::uint64_t diff = block->size - requested_size; diff >= boundary)
 		{
-			Block* new_block = new Block{
+			remainder = new Block{
 				.ptr    = static_cast<char*>(block->ptr) + requested_size,
 				.size   = diff,
 				.in_use = false,
@@ -92,14 +94,14 @@ split_block(
 
 			if(block->next)
 				{
-					block->next->prev = new_block;
+					block->next->prev = remainder;
 				}
 
-			block->next = new_block;
+			block->next = remainder;
 			block->size = requested_size;
 		}
 
-	return block;
+	return { block, remainder };
 }
 
 static Pool small_pool = {};
@@ -114,6 +116,11 @@ static inline void*
 allocate(
 	const std::uint64_t requested_size)
 {
+	if(requested_size == 0)
+		{
+			throw std::invalid_argument("Cannot allocate zero bytes");
+		}
+
 	const std::uint64_t aligned_size = ((requested_size + allocator::ALIGNMENT - 1) / allocator::ALIGNMENT) * allocator::ALIGNMENT;
 
 	void*            ptr          = nullptr;
@@ -125,17 +132,17 @@ allocate(
 			allocator::Block* old_block = *it;
 			pool.free_blocks.erase(it);
 
-			allocator::Block* split_block = allocator::split_block(old_block, aligned_size);
+			const auto [used_block, remainder_block] = allocator::maybe_split_block(old_block, aligned_size);
 
-			ptr                 = split_block->ptr;
-			split_block->in_use = true;
+			ptr                = used_block->ptr;
+			used_block->in_use = true;
 
-			if(split_block->next != nullptr)
+			if(remainder_block != nullptr)
 				{
-					pool.free_blocks.insert(split_block->next);
+					pool.free_blocks.insert(used_block->next);
 				}
 
-			pool.allocated_blocks[ptr] = split_block;
+			pool.allocated_blocks[ptr] = used_block;
 		}
 	else
 		{
@@ -149,18 +156,18 @@ allocate(
 					throw std::runtime_error("Failed to allocate memory");
 				}
 
-			allocator::Block* split_block = allocator::split_block(new_block, aligned_size);
+			const auto [used_block, remainder_block] = allocator::maybe_split_block(new_block, aligned_size);
 
-			ptr                 = split_block->ptr;
-			split_block->in_use = true;
+			ptr                = used_block->ptr;
+			used_block->in_use = true;
 
-			if(split_block->next != nullptr)
+			if(remainder_block != nullptr)
 				{
-					pool.free_blocks.insert(split_block->next);
+					pool.free_blocks.insert(used_block->next);
 				}
 
-			pool.allocated_blocks[ptr] = split_block;
-			pool.roots.emplace_back(split_block);
+			pool.allocated_blocks[ptr] = used_block;
+			pool.roots.emplace_back(used_block);
 		}
 
 	std::memset(ptr, 0, requested_size);

@@ -36,7 +36,7 @@ logical(
 				{
 					out[i] = a[i] > b[i];
 				}
-			elseif constexpr(Kp == LogicOperation::GREATER_EQUAL)
+			else if constexpr(Kp == LogicOperation::GREATER_EQUAL)
 				{
 					out[i] = a[i] >= b[i];
 				}

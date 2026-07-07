@@ -93,7 +93,7 @@ reduce(
 						}
 				}
 
-			if constexpr(Kp == ReductionOperation::VAR || Kp == ReductionOperationKind::STD)
+			if constexpr(Kp == ReductionOperation::VAR || Kp == ReductionOperation::STD)
 				{
 					const float mean       = static_cast<float>(accumulator) / M;
 					float       dispersion = 0.0f;

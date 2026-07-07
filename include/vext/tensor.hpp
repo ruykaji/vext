@@ -438,46 +438,141 @@ public:
 		return out;
 	}
 
+	template <typename T2, Backend B2>
+	void
+	prelu(
+		const Tensor<T2, B2>& rhs)
+	{
+		execute_binary_operation<core::BinaryOperation::PRELU>(*this, *this, rhs);
+	}
+
 	void
 	abs()
 	{
-		core::cpu::operations::unary<core::UnaryOperation::ABS>(__ptr, __shape.length());
+		execute_unary_operation<core::UnaryOperation::ABS>(*this);
 	}
 
 	void
 	sin()
 	{
-		core::cpu::operations::unary<core::UnaryOperation::SIN>(__ptr, __shape.length());
+		execute_unary_operation<core::UnaryOperation::SIN>(*this);
 	}
 
 	void
 	cos()
 	{
-		core::cpu::operations::unary<core::UnaryOperation::COS>(__ptr, __shape.length());
+		execute_unary_operation<core::UnaryOperation::COS>(*this);
 	}
 
 	void
 	exp()
 	{
-		core::cpu::operations::unary<core::UnaryOperation::EXP>(__ptr, __shape.length());
+		execute_unary_operation<core::UnaryOperation::EXP>(*this);
 	}
 
 	void
 	log()
 	{
-		core::cpu::operations::unary<core::UnaryOperation::LOG>(__ptr, __shape.length());
+		execute_unary_operation<core::UnaryOperation::LOG>(*this);
 	}
 
 	void
 	sqrt()
 	{
-		core::cpu::operations::unary<core::UnaryOperation::SQRT>(__ptr, __shape.length());
+		execute_unary_operation<core::UnaryOperation::SQRT>(*this);
+	}
+
+	void
+	square()
+	{
+		execute_unary_operation<core::UnaryOperation::SQUARE>(*this);
+	}
+
+	void
+	round()
+	{
+		execute_unary_operation<core::UnaryOperation::ROUND>(*this);
 	}
 
 	void
 	sigmoid()
 	{
-		core::cpu::operations::unary<core::UnaryOperation::SIGMOID>(__ptr, __shape.length());
+		execute_unary_operation<core::UnaryOperation::SIGMOID>(*this);
+	}
+
+	void
+	soft_relu()
+	{
+		execute_unary_operation<core::UnaryOperation::SOFT_RELU>(*this);
+	}
+
+	void
+	relu()
+	{
+		execute_unary_operation<core::UnaryOperation::RELU>(*this);
+	}
+
+	void
+	softmax()
+	{
+		execute_unary_operation<core::UnaryOperation::SOFTMAX>(*this);
+	}
+
+	void
+	softmin()
+	{
+		execute_unary_operation<core::UnaryOperation::SOFTMIN>(*this);
+	}
+
+	void
+	log_softmax()
+	{
+		execute_unary_operation<core::UnaryOperation::LOGSOFTMAX>(*this);
+	}
+
+	void
+	leaky_relu(
+		const float a = 0.0f)
+	{
+		execute_unary_operation<core::UnaryOperation::LEAKY_RELU>(*this, a);
+	}
+
+	void
+	elu(
+		const float a = 0.0f)
+	{
+		execute_unary_operation<core::UnaryOperation::ELU>(*this, a);
+	}
+
+	void
+	swish(
+		const float a = 0.0f)
+	{
+		execute_unary_operation<core::UnaryOperation::SWISH>(*this, a);
+	}
+
+	void
+	linear(
+		const float a = 1.0f,
+		const float b = 0.0f)
+	{
+		execute_unary_operation<core::UnaryOperation::LINEAR>(*this, a, b);
+	}
+
+	void
+	clip(
+		const float a = std::numeric_limits<float>::lowest(),
+		const float b = std::numeric_limits<float>::infinity())
+	{
+		execute_unary_operation<core::UnaryOperation::CLIP>(*this, a, b);
+	}
+
+	void
+	pow(
+		const float a = 1.0f,
+		const float b = 0.0f)
+	{
+		execute_unary_operation<core::UnaryOperation::POW>(*this, a, b);
 	}
 
 	template <std::integral... Is>
@@ -662,14 +757,15 @@ private:
 			}
 	}
 
-	template <core::UnaryOperation Kp>
+	template <core::UnaryOperation Kp, std::floating_point... Is>
 	static void
 	execute_unary_operation(
-		Tensor<T1, B1>& out)
+		Tensor<T1, B1>& out,
+		Is... param)
 	{
 		if constexpr(B1 == Backend::CPU)
 			{
-				core::cpu::operations::unary<Kp, T1>(out.__ptr, out.__shape.length());
+				core::cpu::operations::unary<Kp, T1>(out.__ptr, out.__shape.length(), param...);
 			}
 		else
 			{

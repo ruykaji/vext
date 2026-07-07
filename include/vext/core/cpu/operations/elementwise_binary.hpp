@@ -47,6 +47,10 @@ binary(
 				{
 					out[i] = std::max(a[i], b[i]);
 				}
+			else if constexpr(Kp == BinaryOperation::PRELU)
+				{
+					out[i] = std::max<T1>(0, a[i]) + b[i] * std::min<T1>(0, a[i]);
+				}
 		}
 }
 
@@ -103,6 +107,10 @@ binary_with_broadcast(
 				{
 
 					out[i] = std::max(a[i], b[b_offset]);
+				}
+			else if constexpr(Kp == BinaryOperation::PRELU)
+				{
+					out[i] = std::max<T1>(0, a[i]) + b[b_offset] * std::min<T1>(0, a[i]);
 				}
 
 			for(std::uint64_t j = dims_count - 1; j >= 0; --j)
