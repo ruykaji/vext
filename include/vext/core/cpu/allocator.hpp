@@ -12,12 +12,12 @@
 namespace vext::core::cpu::allocator
 {
 
-constexpr std::uint64_t ALIGNMENT           = 64;
-constexpr std::uint64_t SIZE_THRESHOLD      = 1024 * 1024;      /** 1MB */
-constexpr std::uint64_t SMALL_POOL_BOUNDARY = 512;              /** 512B */
-constexpr std::uint64_t LARGE_POOL_BOUNDARY = 512 * 1024;       /** 512KB */
-constexpr std::uint64_t MIN_SMALL_POOL_SIZE = 2 * 1024 * 1024;  /** 2MB */
-constexpr std::uint64_t MIN_LARGE_POOL_SIZE = 20 * 1024 * 1024; /** 20MB */
+constexpr std::uint64_t ALIGNMENT            = 64;
+constexpr std::uint64_t SIZE_THRESHOLD       = 1024 * 1024;      /** 1MB */
+constexpr std::uint64_t SMALL_POOL_BOUNDARY  = 512;              /** 512B */
+constexpr std::uint64_t LARGE_POOL_BOUNDARY  = 512 * 1024;       /** 512KB */
+constexpr std::uint64_t SMALL_POOL_SLAB_SIZE = 2 * 1024 * 1024;  /** 2MB */
+constexpr std::uint64_t LARGE_POOL_SLAB_SIZE = 20 * 1024 * 1024; /** 20MB */
 
 struct Block
 {
@@ -57,20 +57,11 @@ struct Pool
 };
 
 static inline std::uint64_t
-size(
-	const std::uint64_t requested_size)
+align_up(
+	const std::uint64_t x,
+	const std::uint64_t a)
 {
-	if(requested_size < SIZE_THRESHOLD)
-		{
-			return MIN_SMALL_POOL_SIZE;
-		}
-
-	if(requested_size < MIN_LARGE_POOL_SIZE)
-		{
-			return MIN_LARGE_POOL_SIZE;
-		}
-
-	return ((requested_size + LARGE_POOL_BOUNDARY - 1) / LARGE_POOL_BOUNDARY) * LARGE_POOL_BOUNDARY;
+	return ((x + a - 1) / a) * a;
 }
 
 static inline std::pair<Block*, Block*>
@@ -78,7 +69,7 @@ maybe_split_block(
 	Block*              block,
 	const std::uint64_t requested_size)
 {
-	const std::uint64_t boundary = requested_size < SIZE_THRESHOLD ? SMALL_POOL_BOUNDARY : LARGE_POOL_BOUNDARY;
+	const std::uint64_t boundary = block->size <= SMALL_POOL_SLAB_SIZE ? SMALL_POOL_BOUNDARY : LARGE_POOL_BOUNDARY;
 
 	Block* remainder = nullptr;
 
@@ -104,8 +95,8 @@ maybe_split_block(
 	return { block, remainder };
 }
 
-static Pool small_pool = {};
-static Pool large_pool = {};
+inline Pool small_pool = {};
+inline Pool large_pool = {};
 
 }
 
@@ -121,7 +112,7 @@ allocate(
 			throw std::invalid_argument("Cannot allocate zero bytes");
 		}
 
-	const std::uint64_t aligned_size = ((requested_size + allocator::ALIGNMENT - 1) / allocator::ALIGNMENT) * allocator::ALIGNMENT;
+	const std::uint64_t aligned_size = allocator::align_up(requested_size, allocator::ALIGNMENT);
 
 	void*            ptr          = nullptr;
 	allocator::Pool& pool         = aligned_size < allocator::SIZE_THRESHOLD ? allocator::small_pool : allocator::large_pool;
@@ -146,7 +137,7 @@ allocate(
 		}
 	else
 		{
-			const std::uint64_t allocation_size = allocator::size(aligned_size);
+			const std::uint64_t allocation_size = aligned_size < allocator::SIZE_THRESHOLD ? allocator::SMALL_POOL_SLAB_SIZE : std::max(allocator::LARGE_POOL_SLAB_SIZE, allocator::align_up(aligned_size, allocator::LARGE_POOL_BOUNDARY));
 
 			allocator::Block* new_block = new allocator::Block{ .size = allocation_size };
 
