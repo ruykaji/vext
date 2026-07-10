@@ -12,12 +12,12 @@ template <UnaryOperation Kp, typename T1, std::floating_point... Is>
 static void
 unary(
 	T1*                 out,
-	const std::uint64_t N,
+	const std::uint32_t N,
 	Is... param)
 {
 	T1 accumulate = 0;
 
-	for(std::uint64_t i = 0; i < N; ++i)
+	for(std::uint32_t i = 0; i < N; ++i)
 		{
 			if constexpr(Kp == UnaryOperation::ABS)
 				{
@@ -81,35 +81,35 @@ unary(
 				}
 			else if constexpr(Kp == UnaryOperation::LEAKY_RELU)
 				{
-					const float a = static_cast<float>(param...[0]);
+					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
 					out[i]        = out[i] > 0 ? out[i] : (a * out[i]);
 				}
 			else if constexpr(Kp == UnaryOperation::ELU)
 				{
-					const float a = static_cast<float>(param...[0]);
+					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
 					out[i]        = out[i] > 0 ? out[i] : a * (std::exp(out[i]) - 1.0f);
 				}
 			else if constexpr(Kp == UnaryOperation::SWISH)
 				{
-					const float a = static_cast<float>(param...[0]);
+					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
 					out[i]        = out[i] / (1.0f + std::exp(-a * out[i]));
 				}
 			else if constexpr(Kp == UnaryOperation::LINEAR)
 				{
-					const float a = static_cast<float>(param...[0]);
-					const float b = static_cast<float>(param...[1]);
+					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
+					const float b = static_cast<float>(std::get<1>(std::tuple{ param... }));
 					out[i]        = a * out[i] + b;
 				}
 			else if constexpr(Kp == UnaryOperation::CLIP)
 				{
-					const float a = static_cast<float>(param...[0]);
-					const float b = static_cast<float>(param...[1]);
+					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
+					const float b = static_cast<float>(std::get<1>(std::tuple{ param... }));
 					out[i]        = std::max(a, std::min(b, out[i]));
 				}
 			else if constexpr(Kp == UnaryOperation::POW)
 				{
-					const float a = static_cast<float>(param...[0]);
-					const float b = static_cast<float>(param...[1]);
+					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
+					const float b = static_cast<float>(std::get<1>(std::tuple{ param... }));
 					out[i]        = a * std::pow(out[i], b);
 				}
 
@@ -119,7 +119,7 @@ unary(
 				}
 		}
 
-	for(std::uint64_t i = 0; i < N; ++i)
+	for(std::uint32_t i = 0; i < N; ++i)
 		{
 			if constexpr(Kp == UnaryOperation::SOFTMAX || Kp == UnaryOperation::SOFTMIN)
 				{

@@ -2,9 +2,18 @@
 #define __VEXT_CORE_TYPE_HPP__
 
 #include <cstdint>
+#include <limits>
 
 namespace vext::core
 {
+
+inline constexpr std::uint32_t MIN_RANK   = 1;
+inline constexpr std::uint32_t MAX_RANK   = 32;
+inline constexpr std::uint32_t MIN_LENGTH = 1;
+inline constexpr std::uint32_t MAX_LENGTH = std::numeric_limits<std::uint32_t>::max() / MAX_RANK;
+
+template <auto...>
+inline constexpr bool dependent_false = false;
 
 enum class UnaryOperation : std::uint8_t
 {

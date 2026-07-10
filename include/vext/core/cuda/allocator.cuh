@@ -1,24 +1,37 @@
-#ifndef __VEXT_ALLOCATOR_CPU_HPP__
-#define __VEXT_ALLOCATOR_CPU_HPP__
+#ifndef __VEXT_ALLOCATOR_CUDA_HPP__
+#define __VEXT_ALLOCATOR_CUDA_HPP__
 
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <iostream>
 #include <set>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
 
-namespace vext::core::cpu::allocator::kernel
+#include <cuda_runtime.h>
+
+#define CUDA_CHECK(call)                                                                                            \
+	do                                                                                                               \
+		{                                                                                                             \
+			cudaError_t err = (call);                                                                                  \
+			if(err != cudaSuccess)                                                                                     \
+				{                                                                                                       \
+					std::cerr << __FILE__ << ":" << __LINE__ << " CUDA Error: " << cudaGetErrorString(err) << std::endl; \
+					std::exit(EXIT_FAILURE);                                                                             \
+				}                                                                                                       \
+		}                                                                                                             \
+	while(0)
+
+namespace vext::core::cuda::allocator::kernel
 {
 
-constexpr std::uint64_t ALIGNMENT            = 64;
-constexpr std::uint64_t SIZE_THRESHOLD       = 1024 * 1024;      /** 1MB */
-constexpr std::uint64_t SMALL_POOL_BOUNDARY  = 512;              /** 512B */
-constexpr std::uint64_t LARGE_POOL_BOUNDARY  = 512 * 1024;       /** 512KB */
-constexpr std::uint64_t SMALL_POOL_SLAB_SIZE = 2 * 1024 * 1024;  /** 2MB */
-constexpr std::uint64_t LARGE_POOL_SLAB_SIZE = 20 * 1024 * 1024; /** 20MB */
+constexpr std::uint64_t ALIGNMENT            = 256;
+constexpr std::uint64_t SIZE_THRESHOLD       = 4 * 1024 * 1024;  /** 4MB */
+constexpr std::uint64_t SMALL_POOL_BOUNDARY  = 4 * 512;          /** 2048B */
+constexpr std::uint64_t LARGE_POOL_BOUNDARY  = 4 * 512 * 1024;   /** 2048KB */
+constexpr std::uint64_t SMALL_POOL_SLAB_SIZE = 8 * 1024 * 1024;  /** 8MB */
+constexpr std::uint64_t LARGE_POOL_SLAB_SIZE = 80 * 1024 * 1024; /** 80MB */
 
 struct Block
 {
@@ -101,7 +114,7 @@ inline Pool large_pool = {};
 
 }
 
-namespace vext::core::cpu::allocator
+namespace vext::core::cuda::allocator
 {
 
 template <typename Tp>
@@ -144,9 +157,9 @@ allocate(
 
 			kernel::Block* new_block = new kernel::Block{ .size = alloc_size };
 
-			if(posix_memalign(&new_block->ptr, kernel::ALIGNMENT, alloc_size) != 0)
+			if(const cudaError_t err = cudaMalloc(&new_block->ptr, alloc_size); err != cudaSuccess)
 				{
-					std::cerr << __FILE__ << ":" << __LINE__ << " CPU Error: Failed to allocate memory" << std::endl;
+					std::cerr << __FILE__ << ":" << __LINE__ << " CUDA Error: " << cudaGetErrorString(err) << std::endl;
 					exit(EXIT_FAILURE);
 				}
 
@@ -164,7 +177,11 @@ allocate(
 			pool.roots.emplace_back(used_block);
 		}
 
-	std::memset(ptr, 0, requested_size);
+	if(const cudaError_t err = cudaMemset(ptr, 0, aligned_size); err != cudaSuccess)
+		{
+			std::cerr << __FILE__ << ":" << __LINE__ << " CUDA Error: " << cudaGetErrorString(err) << std::endl;
+			exit(EXIT_FAILURE);
+		}
 
 	return static_cast<Tp*>(ptr);
 }
@@ -193,7 +210,7 @@ deallocate(
 		}
 	else
 		{
-			std::cerr << __FILE__ << ":" << __LINE__ << " CPU Error: Failed to free allocated pointer" << std::endl;
+			std::cerr << __FILE__ << ":" << __LINE__ << " CUDA Error: Failed to free allocated pointer" << std::endl;
 			exit(EXIT_FAILURE);
 		}
 
@@ -243,7 +260,7 @@ free()
 {
 	for(auto& block : kernel::small_pool.roots)
 		{
-			std::free(block->ptr);
+			CUDA_CHECK(cudaFree(block->ptr));
 
 			while(block != nullptr)
 				{
@@ -260,7 +277,7 @@ free()
 
 	for(auto& block : kernel::large_pool.roots)
 		{
-			std::free(block->ptr);
+			CUDA_CHECK(cudaFree(block->ptr));
 
 			while(block != nullptr)
 				{
@@ -277,5 +294,7 @@ free()
 }
 
 }
+
+#undef CUDA_CHECK
 
 #endif

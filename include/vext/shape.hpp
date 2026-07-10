@@ -5,27 +5,32 @@
 #include <stdexcept>
 #include <vector>
 
+#include <vext/core/type.hpp>
+
 namespace vext
 {
 
 class Shape
 {
 public:
-	using iterator       = std::vector<std::uint64_t>::iterator;
-	using const_iterator = std::vector<std::uint64_t>::const_iterator;
+	using iterator       = std::vector<std::uint32_t>::iterator;
+	using const_iterator = std::vector<std::uint32_t>::const_iterator;
 
 	template <std::integral... Is>
 	Shape(
 		Is... dims)
 	{
-		__dims = { static_cast<std::uint64_t>(dims)... };
+		static_assert(sizeof...(dims) >= core::MIN_RANK, "");
+		static_assert(sizeof...(dims) <= core::MAX_RANK, "");
+
+		__dims = { static_cast<std::uint32_t>(dims)... };
 
 		compute_length();
 		compute_strides();
 	};
 
 	explicit Shape(
-		const std::vector<std::uint64_t>& dims)
+		const std::vector<std::uint32_t>& dims)
 		: __dims(dims)
 	{
 		compute_length();
@@ -33,17 +38,17 @@ public:
 	};
 
 	explicit Shape(
-		std::vector<std::uint64_t>&& dims)
-		: __dims(std::forward<std::vector<std::uint64_t>>(dims))
+		std::vector<std::uint32_t>&& dims)
+		: __dims(std::forward<std::vector<std::uint32_t>>(dims))
 	{
 		compute_length();
 		compute_strides();
 	};
 
 public:
-	std::uint64_t
+	std::uint32_t
 	operator[](
-		const std::int64_t index) const noexcept
+		const std::int32_t index) const noexcept
 	{
 		if(index >= 0)
 			{
@@ -109,7 +114,7 @@ public:
 				throw std::runtime_error("");
 			}
 
-		std::vector<std::uint64_t> dims;
+		std::vector<std::uint32_t> dims;
 		dims.resize(source_size, 1);
 
 		std::copy(target.__dims.begin(), target.__dims.end(), dims.begin() + offset_left);
@@ -129,9 +134,9 @@ public:
 		return shape;
 	}
 
-	std::uint64_t
+	std::uint32_t
 	at(
-		const std::int64_t index) const
+		const std::int32_t index) const
 	{
 		if(std::abs(index) >= __dims.size())
 			{
@@ -146,7 +151,7 @@ public:
 		return __dims[__dims.size() + index];
 	}
 
-	std::uint64_t
+	std::uint32_t
 	length() const noexcept
 	{
 		return __length;
@@ -158,13 +163,13 @@ public:
 		return __dims.size();
 	}
 
-	const std::vector<std::uint64_t>&
+	const std::vector<std::uint32_t>&
 	dims() const noexcept
 	{
 		return __dims;
 	}
 
-	const std::vector<std::uint64_t>&
+	const std::vector<std::uint32_t>&
 	strides() const noexcept
 	{
 		return __strides;
@@ -196,18 +201,38 @@ public:
 
 private:
 	void
-	compute_length() noexcept
+	compute_length()
 	{
+		if(__dims.size() < core::MIN_RANK)
+			{
+				throw std::runtime_error("");
+			}
+
+		if(__dims.size() > core::MAX_RANK)
+			{
+				throw std::runtime_error("");
+			}
+
 		__length = 1;
 
 		for(const auto dim : __dims)
 			{
 				__length *= dim;
+
+				if(__length > core::MAX_LENGTH)
+					{
+						throw std::overflow_error("Length calculation overflowed");
+					}
+			}
+
+		if(__length < core::MIN_LENGTH)
+			{
+				throw std::overflow_error("Length calculation underflowed");
 			}
 	}
 
 	void
-	compute_strides() noexcept
+	compute_strides()
 	{
 		const std::uint64_t size = __dims.size();
 		__strides.resize(size);
@@ -217,7 +242,7 @@ private:
 				return;
 			}
 
-		std::uint64_t stride = 1;
+		std::uint32_t stride = 1;
 
 		for(std::uint64_t i = size; i > 0; --i)
 			{
@@ -227,9 +252,9 @@ private:
 	}
 
 private:
-	std::uint64_t              __length  = 0;
-	std::vector<std::uint64_t> __dims    = {};
-	std::vector<std::uint64_t> __strides = {};
+	std::uint32_t              __length  = 0;
+	std::vector<std::uint32_t> __dims    = {};
+	std::vector<std::uint32_t> __strides = {};
 };
 
 };

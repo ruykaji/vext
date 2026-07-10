@@ -15,22 +15,22 @@ void
 reduce(
 	T1*                               out,
 	const T2*                         src,
-	const std::uint64_t               N,
-	const std::uint64_t               M,
-	const std::vector<std::uint64_t>& keep_dims,
-	const std::vector<std::uint64_t>& keep_strides,
-	const std::vector<std::uint64_t>& reduce_dims,
-	const std::vector<std::uint64_t>& reduce_strides)
+	const std::uint32_t               N,
+	const std::uint32_t               M,
+	const std::vector<std::uint32_t>& keep_dims,
+	const std::vector<std::uint32_t>& keep_strides,
+	const std::vector<std::uint32_t>& reduce_dims,
+	const std::vector<std::uint32_t>& reduce_strides)
 {
 	const std::uint64_t keep_size   = keep_dims.size();
 	const std::uint64_t reduce_size = reduce_dims.size();
 
-	std::vector<std::uint64_t> keep_coords(keep_dims.size(), 0);
-	std::vector<std::uint64_t> reduce_coords(reduce_dims.size(), 0);
+	std::vector<std::uint32_t> keep_coords(keep_dims.size(), 0);
+	std::vector<std::uint32_t> reduce_coords(reduce_dims.size(), 0);
 
-	std::uint64_t keep_offset = 0;
+	std::uint32_t keep_offset = 0;
 
-	for(std::uint64_t i = 0; i < N; ++i)
+	for(std::uint32_t i = 0; i < N; ++i)
 		{
 			T1 accumulator = 0;
 
@@ -47,14 +47,14 @@ reduce(
 					accumulator = std::numeric_limits<T1>::lowest();
 				}
 
-			for(std::uint64_t j = 0; j < reduce_size; ++j)
+			for(std::uint32_t j = 0; j < reduce_size; ++j)
 				{
 					reduce_coords[j] = 0;
 				}
 
-			std::uint64_t reduce_offset = 0;
+			std::uint32_t reduce_offset = 0;
 
-			for(std::uint64_t j = 0; j < M; ++j)
+			for(std::uint32_t j = 0; j < M; ++j)
 				{
 					if constexpr(Kp == ReductionOperation::PROD)
 						{
@@ -73,7 +73,7 @@ reduce(
 							accumulator += static_cast<T1>(src[keep_offset + reduce_offset]);
 						}
 
-					for(std::uint64_t k = reduce_size - 1; k >= 0; --k)
+					for(std::uint32_t k = reduce_size - 1;; --k)
 						{
 							++reduce_coords[k];
 
@@ -98,18 +98,18 @@ reduce(
 					const float mean       = static_cast<float>(accumulator) / M;
 					float       dispersion = 0.0f;
 
-					for(std::uint64_t j = 0; j < reduce_size; ++j)
+					for(std::uint32_t j = 0; j < reduce_size; ++j)
 						{
 							reduce_coords[j] = 0;
 						}
 
-					std::uint64_t reduce_offset = 0;
+					std::uint32_t reduce_offset = 0;
 
-					for(std::uint64_t j = 0; j < M; ++j)
+					for(std::uint32_t j = 0; j < M; ++j)
 						{
 							dispersion += std::pow(src[keep_offset + reduce_offset] - mean, 2.0f);
 
-							for(std::uint64_t k = reduce_size - 1; k >= 0; --k)
+							for(std::uint32_t k = reduce_size - 1;; --k)
 
 								{
 									++reduce_coords[k];
@@ -120,6 +120,7 @@ reduce(
 											break;
 										}
 
+									reduce_offset -= (reduce_dims[k] - 1) * reduce_strides[k];
 									reduce_coords[k] = 0;
 
 									if(k == 0)
@@ -147,7 +148,7 @@ reduce(
 					out[i] = accumulator;
 				}
 
-			for(std::uint64_t k = keep_size - 1; k >= 0; --k)
+			for(std::uint32_t k = keep_size - 1;; --k)
 				{
 					++keep_coords[k];
 

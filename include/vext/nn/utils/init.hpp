@@ -43,10 +43,11 @@ xavier_normal(
 	std::mt19937             gen{ rd() };
 	std::normal_distribution d{ 0.0f, sigma };
 
-	for(std::uint64_t i = 0, end = shape.length(); i < end; ++i)
-		{
-			weight.flat_item(i) = d(gen);
-		}
+	// clang-format off
+	std::vector<float> values(shape.length(), 0);
+    std::ranges::generate(values, [&](){ return d(gen); });
+    weight.set_from(values);
+	// clang-format on
 }
 
 template <Backend Bp>
@@ -63,10 +64,11 @@ xavier_uniform(
 	std::mt19937                   gen{ rd() };
 	std::uniform_real_distribution d{ -a, a };
 
-	for(std::uint64_t i = 0, end = shape.length(); i < end; ++i)
-		{
-			weight.flat_item(i) = d(gen);
-		}
+	// clang-format off
+	std::vector<float> values(shape.length(), 0);
+    std::ranges::generate(values, [&](){ return d(gen); });
+    weight.set_from(values);
+	// clang-format on
 }
 
 template <Backend Bp>
@@ -84,10 +86,11 @@ kaiming_normal(
 	std::mt19937             gen{ rd() };
 	std::normal_distribution d{ 0.0f, sigma };
 
-	for(std::uint64_t i = 0, end = shape.length(); i < end; ++i)
-		{
-			weight.flat_item(i) = d(gen);
-		}
+	// clang-format off
+	std::vector<float> values(shape.length(), 0);
+    std::ranges::generate(values, [&](){ return d(gen); });
+    weight.set_from(values);
+	// clang-format on
 }
 
 template <Backend Bp>
@@ -106,10 +109,11 @@ kaiming_uniform(
 	std::mt19937                   gen{ rd() };
 	std::uniform_real_distribution d{ -a, a };
 
-	for(std::uint64_t i = 0, end = shape.length(); i < end; ++i)
-		{
-			weight.flat_item(i) = d(gen);
-		}
+	// clang-format off
+	std::vector<float> values(shape.length(), 0);
+    std::ranges::generate(values, [&](){ return d(gen); });
+    weight.set_from(values);
+	// clang-format on
 }
 
 }

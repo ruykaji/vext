@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.15.0)
 project(vext VERSION 0.0.1 LANGUAGES C CXX)
 
-option(VEXT_BUILD_TEST "Build Test" ON)
 option(VEXT_ENABLE_CUDA "Enable cuda" ON)
+option(VEXT_BUILD_TEST  "Build Test"  ON)
 
 set(VEXT_CUDA OFF)
 
@@ -11,7 +11,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(VEXT_ENABLE_CUDA)
@@ -53,7 +53,7 @@ target_include_directories(vext
 
 if(VEXT_CUDA)
     set_target_properties(vext PROPERTIES
-        CUDA_STANDARD 17
+        CUDA_STANDARD 20
         CUDA_STANDARD_REQUIRED ON
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_ARCHITECTURES native
@@ -67,6 +67,7 @@ endif()
 
 if(VEXT_BUILD_TEST)
     find_package(GTest)
+    find_package(benchmark REQUIRED)
 
     if(GTEST_FOUND)
         enable_testing()

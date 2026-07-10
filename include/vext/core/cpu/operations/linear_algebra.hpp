@@ -15,17 +15,17 @@ matmul(
 	std::common_type_t<T1, T2>* out,
 	const T1*                   a,
 	const T2*                   b,
-	const std::uint64_t         M,
-	const std::uint64_t         P,
-	const std::uint64_t         N)
+	const std::uint32_t         M,
+	const std::uint32_t         P,
+	const std::uint32_t         N)
 {
-	for(std::uint64_t m = 0; m < M; ++m)
+	for(std::uint32_t m = 0; m < M; ++m)
 		{
-			for(std::uint64_t p = 0; p < P; ++p)
+			for(std::uint32_t p = 0; p < P; ++p)
 				{
 					const T1 a_value = a[m * P + p];
 
-					for(std::uint64_t n = 0; n < N; ++n)
+					for(std::uint32_t n = 0; n < N; ++n)
 						{
 							out[m * N + n] += a_value * b[p * N + n];
 						}

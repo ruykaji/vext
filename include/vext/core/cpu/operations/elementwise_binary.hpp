@@ -15,9 +15,9 @@ binary(
 	std::common_type_t<T1, T2>* out,
 	const T1*                   a,
 	const T2*                   b,
-	const std::uint64_t         N)
+	const std::uint32_t         N)
 {
-	for(std::uint64_t i = 0; i < N; ++i)
+	for(std::uint32_t i = 0; i < N; ++i)
 		{
 			if constexpr(Kp == BinaryOperation::ADD)
 				{
@@ -60,18 +60,18 @@ binary_with_broadcast(
 	std::common_type_t<T1, T2>*       out,
 	const T1*                         a,
 	const T2*                         b,
-	const std::uint64_t               N,
-	const std::vector<std::uint64_t>& dims,
-	const std::vector<std::uint64_t>& strides)
+	const std::uint32_t               N,
+	const std::vector<std::uint32_t>& dims,
+	const std::vector<std::uint32_t>& strides)
 {
-	const std::uint64_t dims_count = strides.size();
+	const std::uint32_t dims_count = strides.size();
 
-	std::vector<std::uint64_t> index;
+	std::vector<std::uint32_t> index;
 	index.resize(dims_count, 0);
 
-	std::uint64_t b_offset = 0;
+	std::uint32_t b_offset = 0;
 
-	for(std::uint64_t i = 0; i < N; ++i)
+	for(std::uint32_t i = 0; i < N; ++i)
 		{
 			if constexpr(Kp == BinaryOperation::ADD)
 				{
@@ -113,7 +113,7 @@ binary_with_broadcast(
 					out[i] = std::max<T1>(0, a[i]) + b[b_offset] * std::min<T1>(0, a[i]);
 				}
 
-			for(std::uint64_t j = dims_count - 1; j >= 0; --j)
+			for(std::uint32_t j = dims_count - 1;; --j)
 				{
 					++index[j];
 
@@ -123,8 +123,8 @@ binary_with_broadcast(
 							break;
 						}
 
-					index[j] = 0;
 					b_offset -= (dims[j] - 1) * strides[j];
+					index[j] = 0;
 
 					if(j == 0)
 						{

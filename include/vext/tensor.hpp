@@ -1,6 +1,7 @@
 #ifndef __VEXT_TENSOR_HPP__
 #define __VEXT_TENSOR_HPP__
 
+#include "vext/core/type.hpp"
 #include <algorithm>
 #include <initializer_list>
 #include <queue>
@@ -13,7 +14,19 @@
 #include <vext/core/cpu/operations/elementwise_logical.hpp>
 #include <vext/core/cpu/operations/elementwise_unary.hpp>
 #include <vext/core/cpu/operations/linear_algebra.hpp>
+#include <vext/core/cpu/operations/memory.hpp>
 #include <vext/core/cpu/operations/reduction.hpp>
+
+#if VEXT_CUDA
+#include <vext/core/cuda/allocator.cuh>
+#include <vext/core/cuda/operations/elementwise_binary.cuh>
+#include <vext/core/cuda/operations/elementwise_logical.cuh>
+#include <vext/core/cuda/operations/elementwise_unary.cuh>
+#include <vext/core/cuda/operations/linear_algebra.cuh>
+#include <vext/core/cuda/operations/memory.cuh>
+#include <vext/core/cuda/operations/reduction.cuh>
+#endif
+
 #include <vext/shape.hpp>
 #include <vext/type.hpp>
 
@@ -44,9 +57,14 @@ public:
 	Tensor(
 		const std::initializer_list<InitializerDimension>& list)
 	{
+		if(list.size() == 0)
+			{
+				throw std::runtime_error("");
+			}
+
 		const InitializerDimension root(list);
 
-		std::vector<std::uint64_t> dims;
+		std::vector<std::uint32_t> dims;
 		std::vector<T1>            data;
 
 		for(InitializerDimension const* node = &root; !node->children.empty(); node = &node->children[0])
@@ -96,96 +114,63 @@ public:
 					}
 			}
 
-		__shape = Shape(dims);
-
-		allocate(data.data());
+		__shape = std::move(Shape(dims));
+		allocate<Backend::CPU>(data.data());
 	}
 
 	template <std::integral... Is>
 	Tensor(
-		Is... dims) : __shape(dims...)
+		Is... dims)
+		: __shape(dims...)
 	{
 		allocate();
 	}
 
 	Tensor(
-		const Shape& shape = {}) : __shape(shape)
+		const Shape& shape) : __shape(shape)
 	{
 		allocate();
-	}
-
-	template <typename T2, Backend B2>
-	Tensor(
-		const Tensor<T2, B2>& other)
-	{
-		__shape = other.__shape;
-
-		if constexpr(B1 == B2)
-			{
-				allocate(other.__ptr);
-			}
-		else
-			{
-			}
 	}
 
 	template <Backend B2>
 	Tensor(
 		const Tensor<T1, B2>& other)
 	{
-		if constexpr(B1 == Backend::CPU)
-			{
-			}
-		else
-			{
-			}
+		__shape = other.__shape;
+		allocate<B2>(other.__ptr);
 	}
 
 	Tensor(
 		const Tensor& other)
 	{
 		__shape = other.__shape;
-
-		allocate(other.__ptr);
+		allocate<B1>(other.__ptr);
 	}
 
 	Tensor(
 		Tensor&& other)
 	{
-		__shape = std::exchange(other.__shape, {});
+		__shape = std::exchange(other.__shape, { core::MIN_LENGTH });
 		__ptr   = std::exchange(other.__ptr, nullptr);
 	}
 
 	~Tensor()
 	{
-		if constexpr(B1 == Backend::CPU)
-			{
-				core::cpu::deallocate(__ptr);
-			}
+		deallocate();
 	}
 
 public:
-	template <typename T2, Backend B2>
+	template <Backend B2>
 	Tensor&
 	operator=(
-		const Tensor<T2, B2>& other)
+		const Tensor<T1, B2>& other)
 	{
 		if(this != &other)
 			{
-				if(__ptr != nullptr)
-					{
-						core::cpu::deallocate(__ptr);
-					}
+				deallocate();
 
 				__shape = other.__shape;
-
-				if constexpr(B1 == B2)
-					{
-						allocate(other.__ptr);
-					}
-				else
-					{
-					}
+				allocate<B2>(other.__ptr);
 			}
 
 		return *this;
@@ -197,14 +182,10 @@ public:
 	{
 		if(this != &other)
 			{
-				if(__ptr != nullptr)
-					{
-						core::cpu::deallocate(__ptr);
-					}
+				deallocate();
 
 				__shape = other.__shape;
-
-				allocate(other.__ptr);
+				allocate<B1>(other.__ptr);
 			}
 
 		return *this;
@@ -216,10 +197,7 @@ public:
 	{
 		if(this != &other)
 			{
-				if(__ptr != nullptr)
-					{
-						core::cpu::deallocate(__ptr);
-					}
+				deallocate();
 
 				__shape = std::exchange(other.__shape, {});
 				__ptr   = std::exchange(other.__ptr, nullptr);
@@ -401,6 +379,26 @@ public:
 	}
 
 public:
+	void
+	set_from(
+		const std::vector<T1>& values)
+	{
+		if constexpr(B1 == Backend::CPU)
+			{
+				core::cpu::operations::memcpy<T1>(__ptr, values.data(), std::min<std::uint32_t>(values.size(), __shape.length()));
+			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				core::cuda::operations::memcpy<T1, B1, Backend::CPU>(__ptr, values.data(), std::min<std::uint32_t>(values.size(), __shape.length()));
+			}
+		#endif
+		else
+			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
+			}
+	}
+
 	template <typename T2, Backend B2>
 	auto
 	matmul(
@@ -408,23 +406,23 @@ public:
 	{
 		static_assert(B1 == B2, "Error: Binary operations cannot be performed on tensors with different Backends!");
 
-		const std::uint64_t lhs_shared = __shape[-1];
-		const std::uint64_t rhs_shared = rhs.__shape[0];
+		const std::uint32_t lhs_shared = __shape[-1];
+		const std::uint32_t rhs_shared = rhs.__shape[0];
 
 		if(lhs_shared != rhs_shared)
 			{
 				throw std::runtime_error("Cannot multiply tensors: left tensor's last dimension must match right tensor's first dimension.");
 			}
 
-		std::uint64_t lhs_combined = 1;
-		std::uint64_t rhs_combined = 1;
+		std::uint32_t lhs_combined = 1;
+		std::uint32_t rhs_combined = 1;
 
-		std::vector<std::uint64_t> remainder;
+		std::vector<std::uint32_t> remainder;
 		remainder.reserve(__shape.size() + rhs.__shape.size());
 
 		// clang-format off
-        std::ranges::for_each(__shape.begin(), std::prev(__shape.end()), [&lhs_combined, &remainder](const std::uint64_t dim){ lhs_combined *= dim; remainder.emplace_back(dim); });
-        std::ranges::for_each(std::next(rhs.__shape.begin()), rhs.__shape.end(), [&rhs_combined, &remainder](const std::uint64_t dim){ rhs_combined *= dim; remainder.emplace_back(dim); });
+        std::ranges::for_each(__shape.begin(), std::prev(__shape.end()), [&lhs_combined, &remainder](const std::uint32_t dim){ lhs_combined *= dim; remainder.emplace_back(dim); });
+        std::ranges::for_each(std::next(rhs.__shape.begin()), rhs.__shape.end(), [&rhs_combined, &remainder](const std::uint32_t dim){ rhs_combined *= dim; remainder.emplace_back(dim); });
 		// clang-format on
 
 		const Shape                            shape(std::move(remainder));
@@ -433,6 +431,16 @@ public:
 		if constexpr(B1 == Backend::CPU)
 			{
 				core::cpu::operations::matmul<T1, T2>(out.__ptr, __ptr, rhs.__ptr, lhs_combined, lhs_shared, rhs_combined);
+			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				core::cuda::operations::matmul<T1, T2>(out.__ptr, __ptr, rhs.__ptr, lhs_combined, lhs_shared, rhs_combined);
+			}
+		#endif
+		else
+			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
 			}
 
 		return out;
@@ -632,80 +640,39 @@ public:
 	}
 
 	template <std::integral... Is>
-	T1&
-	item(
-		Is... dims)
-	{
-		const std::uint64_t index = flat_index(dims...);
-
-		if(index >= __shape.length())
-			{
-				throw std::invalid_argument("");
-			}
-
-		if constexpr(B1 == Backend::CPU)
-			{
-				return __ptr[index];
-			}
-		else
-			{
-			}
-	}
-
-	template <std::integral... Is>
 	T1
 	item(
 		Is... dims) const
 	{
-		const std::uint64_t index = flat_index(dims...);
+		std::uint32_t index = 0;
 
-		if(index >= __shape.length())
+		if constexpr(sizeof...(dims) == 1)
 			{
-				throw std::invalid_argument("");
+				index = static_cast<std::uint32_t>((dims, ...));
 			}
+		else if constexpr(sizeof...(dims) > 1)
+			{
+				index = flat_index(dims...);
 
-		if constexpr(B1 == Backend::CPU)
-			{
-				return __ptr[index];
-			}
-		else
-			{
-			}
-	}
-
-	T1&
-	flat_item(
-		const std::uint64_t index)
-	{
-		if(index >= __shape.length())
-			{
-				throw std::invalid_argument("");
+				if(index >= __shape.length())
+					{
+						throw std::invalid_argument("");
+					}
 			}
 
 		if constexpr(B1 == Backend::CPU)
 			{
 				return __ptr[index];
 			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				return core::cuda::operations::memget(__ptr, index);
+			}
+		#endif
 		else
 			{
-			}
-	}
-
-	T1
-	flat_item(
-		const std::uint64_t index) const
-	{
-		if(index >= __shape.length())
-			{
-				throw std::invalid_argument("");
-			}
-
-		if constexpr(B1 == Backend::CPU)
-			{
-				return __ptr[index];
-			}
-		else
-			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
 			}
 	}
 
@@ -731,11 +698,17 @@ private:
 					{
 						core::cpu::operations::binary<Kp, T1, T2>(out.__ptr, lhs.__ptr, rhs.__ptr, lhs.__shape.length());
 					}
+				#if VEXT_CUDA
+				else if constexpr(B1 == Backend::CUDA)
+					{
+						core::cuda::operations::binary<Kp, T1, T2>(out.__ptr, lhs.__ptr, rhs.__ptr, lhs.__shape.length());
+					}
+				#endif
 				else
 					{
+						static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
 					}
 			}
-
 		else
 			{
 				try
@@ -746,8 +719,15 @@ private:
 							{
 								core::cpu::operations::binary_with_broadcast<Kp, T1, T2>(out.__ptr, lhs.__ptr, rhs.__ptr, lhs.__shape.length(), lhs.__shape.dims(), broadcast.strides());
 							}
+						#if VEXT_CUDA
+						else if constexpr(B1 == Backend::CUDA)
+							{
+								core::cuda::operations::binary_with_broadcast<Kp, T1, T2>(out.__ptr, lhs.__ptr, rhs.__ptr, lhs.__shape.length(), lhs.__shape.dims(), broadcast.strides());
+							}
+						#endif
 						else
 							{
+								static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
 							}
 					}
 				catch(...)
@@ -767,8 +747,15 @@ private:
 			{
 				core::cpu::operations::unary<Kp, T1>(out.__ptr, out.__shape.length(), param...);
 			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				core::cuda::operations::unary<Kp, T1>(out.__ptr, out.__shape.length(), param...);
+			}
+		#endif
 		else
 			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
 			}
 	}
 
@@ -790,8 +777,15 @@ private:
 			{
 				core::cpu::operations::logical<Kp, T1, T2>(out.__ptr, lhs.__ptr, rhs.__ptr, out.__shape.length());
 			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				core::cuda::operations::logical<Kp, T1, T2>(out.__ptr, lhs.__ptr, rhs.__ptr, out.__shape.length());
+			}
+		#endif
 		else
 			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
 			}
 	}
 
@@ -801,59 +795,59 @@ private:
 		const Tensor<T1, B1>& src,
 		Is... axis)
 	{
-		const std::int64_t  reduce_axis[] = { static_cast<std::int64_t>(axis)... };
-		const std::uint64_t reduce_size   = sizeof...(axis);
+		const std::uint32_t reduce_axis[] = { static_cast<std::uint32_t>(axis)... };
+		const std::uint32_t reduce_size   = sizeof...(axis);
 
-		const std::vector<std::uint64_t>& strides = src.__shape.strides();
-		const std::vector<std::uint64_t>& dims    = src.__shape.dims();
+		const std::vector<std::uint32_t>& strides = src.__shape.strides();
+		const std::vector<std::uint32_t>& dims    = src.__shape.dims();
 
-		const std::uint64_t dims_count = dims.size();
+		const std::uint32_t dims_count = dims.size();
 
-		if(reduce_size > dims_count)
+		std::vector<std::uint8_t> is_reduce_axis = {};
+		std::uint32_t             keep_size      = 1;
+
+		if constexpr(reduce_size != 0)
 			{
-				throw std::runtime_error("Cannot reduce tensor along non-existing axis.");
-			}
-
-		std::vector<std::uint8_t> is_reduce_axis(dims_count, 0);
-
-		for(std::uint64_t i = 0; i < reduce_size; ++i)
-			{
-				std::int64_t ax = reduce_axis[i];
-
-				if(ax < 0)
-					{
-						ax += dims_count;
-					}
-
-				if(ax >= dims_count || ax < 0)
+				if(reduce_size > dims_count)
 					{
 						throw std::runtime_error("Cannot reduce tensor along non-existing axis.");
 					}
 
-				if(is_reduce_axis[ax])
-					{
-						throw std::runtime_error("Duplicate reduction axis.");
-					}
+				is_reduce_axis.resize(dims_count, 0);
+				keep_size = dims_count - reduce_size;
 
-				is_reduce_axis[ax] = true;
+				for(std::uint32_t i = 0; i < reduce_size; ++i)
+					{
+						std::uint32_t ax = reduce_axis[i];
+
+						if(ax >= dims_count)
+							{
+								throw std::runtime_error("Cannot reduce tensor along non-existing axis.");
+							}
+
+						if(is_reduce_axis[ax])
+							{
+								throw std::runtime_error("Duplicate reduction axis.");
+							}
+
+						is_reduce_axis[ax] = 1;
+					}
 			}
 
-		const std::uint64_t keep_size = reduce_size == 0 ? 1 : (dims_count - reduce_size);
-
-		std::vector<std::uint64_t> keep_dims;
-		std::vector<std::uint64_t> keep_strides;
-		std::vector<std::uint64_t> reduce_dims;
-		std::vector<std::uint64_t> reduce_strides;
+		std::vector<std::uint32_t> keep_dims;
+		std::vector<std::uint32_t> keep_strides;
+		std::vector<std::uint32_t> reduce_dims;
+		std::vector<std::uint32_t> reduce_strides;
 
 		keep_dims.reserve(keep_size);
 		keep_strides.reserve(keep_size);
 		reduce_dims.reserve(reduce_size);
 		reduce_strides.reserve(reduce_size);
 
-		std::uint64_t N = 1;
-		std::uint64_t M = 1;
+		std::uint32_t N = 1;
+		std::uint32_t M = 1;
 
-		if(reduce_size == 0)
+		if constexpr(reduce_size == 0)
 			{
 				keep_dims.emplace_back(1);
 				keep_strides.emplace_back(0);
@@ -864,7 +858,7 @@ private:
 			}
 		else
 			{
-				for(std::uint64_t i = 0; i < dims_count; ++i)
+				for(std::uint32_t i = 0; i < dims_count; ++i)
 					{
 						if(is_reduce_axis[i])
 							{
@@ -888,31 +882,97 @@ private:
 			{
 				core::cpu::operations::reduce<Kp>(out.__ptr, src.__ptr, N, M, keep_dims, keep_strides, reduce_dims, reduce_strides);
 			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				core::cuda::operations::reduce<Kp>(out.__ptr, src.__ptr, N, M, keep_dims, keep_strides, reduce_dims, reduce_strides);
+			}
+		 #endif
 		else
 			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
 			}
 
 		return out;
 	}
 
-	template <typename... Args>
 	void
-	allocate(
-		Args... args)
+	allocate()
 	{
-		const std::uint64_t requested_size = __shape.length() * sizeof(T1);
+		const std::uint64_t count = __shape.length();
 
 		if constexpr(B1 == Backend::CPU)
 			{
-				__ptr = static_cast<T1*>(core::cpu::allocate(requested_size));
-
-				if constexpr(sizeof...(args) != 0)
-					{
-						std::memcpy(__ptr, static_cast<void*>(args)..., requested_size);
-					}
+				__ptr = core::cpu::allocator::allocate<T1>(count);
 			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				__ptr = core::cuda::allocator::allocate<T1>(count);
+			}
+		#endif
 		else
 			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
+			}
+	}
+
+	template <Backend B2>
+	void
+	allocate(
+		T1* data)
+	{
+		const std::uint64_t count = __shape.length() * sizeof(T1);
+
+		if constexpr(B1 == Backend::CPU)
+			{
+				__ptr = core::cpu::allocator::allocate<T1>(count);
+
+				if constexpr(B2 == Backend::CPU)
+					{
+						core::cpu::operations::memcpy<T1>(__ptr, data, count);
+					}
+				#if VEXT_CUDA
+				else if constexpr(B2 == Backend::CUDA)
+					{
+						core::cuda::operations::memcpy<T1, B1, B2>(__ptr, data, count);
+					}
+				#endif
+				else
+					{
+						static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
+					}
+			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				__ptr = core::cuda::allocator::allocate<T1>(count);
+
+				core::cuda::operations::memcpy<T1, B1, B2>(__ptr, data, count);
+			}
+		#endif
+		else
+			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
+			}
+	}
+
+	void
+	deallocate()
+	{
+		if constexpr(B1 == Backend::CPU)
+			{
+				core::cpu::allocator::deallocate(__ptr);
+			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				core::cuda::allocator::deallocate(__ptr);
+			}
+		#endif
+		else
+			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
 			}
 	}
 
@@ -921,19 +981,19 @@ private:
 	flat_index(
 		Is... dims) const
 	{
-		const std::uint64_t dims_pack[]   = { static_cast<std::uint64_t>(dims)... };
-		const std::uint64_t num_arguments = sizeof...(dims);
+		const std::uint32_t dims_pack[]   = { static_cast<std::uint32_t>(dims)... };
+		const std::uint32_t num_arguments = sizeof...(dims);
 
 		if(num_arguments != __shape.size())
 			{
 				throw std::runtime_error("Incorrect number of tensor dimensions.");
 			}
 
-		const std::vector<std::uint64_t>& strides = __shape.strides();
+		const std::vector<std::uint32_t>& strides = __shape.strides();
 
-		std::uint64_t index = 0;
+		std::uint32_t index = 0;
 
-		for(std::uint64_t i = 0; i < num_arguments; ++i)
+		for(std::uint32_t i = 0; i < num_arguments; ++i)
 			{
 				if(dims_pack[i] >= __shape[i])
 					{
@@ -943,7 +1003,7 @@ private:
 				index += dims_pack[i] * strides[i];
 			}
 
-		const std::uint64_t length = __shape.length();
+		const std::uint32_t length = __shape.length();
 
 		if(index >= length)
 			{
@@ -954,11 +1014,10 @@ private:
 	}
 
 private:
-	T1*           __ptr         = nullptr;
-	std::uint64_t __cpu_stream  = 0;
-	std::uint64_t __cuda_stream = 0;
-	Shape         __shape       = {};
+	T1*   __ptr   = nullptr;
+	Shape __shape = { core::MIN_LENGTH };
 };
+
 }
 
 #endif
