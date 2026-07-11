@@ -7,13 +7,22 @@
 
 #include <vext/core/cuda/allocator.cuh>
 #include <vext/core/cuda/operations/elementwise_binary.cuh>
+#include <vext/core/cuda/operations/elementwise_logical.cuh>
+#include <vext/core/cuda/operations/elementwise_unary.cuh>
 #include <vext/core/cuda/operations/linear_algebra.cuh>
 #include <vext/core/cuda/operations/memory.cuh>
 #include <vext/core/cuda/operations/reduction.cuh>
+#include <vext/nn/layer/linear.hpp>
 #include <vext/tensor.hpp>
 
 namespace
 {
+
+constexpr std::uint32_t ELEMENT_COUNT         = 1U << 24U;
+constexpr std::uint32_t INPLACE_ELEMENT_COUNT = 1U << 20U;
+constexpr std::uint32_t MATRIX_SIZE           = 512U;
+constexpr std::int32_t  ELEMENT_ITERS         = 16;
+constexpr std::int32_t  MATMUL_ITERS          = 16;
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VEXT_BENCHMARK_NOINLINE __attribute__((noinline))
@@ -28,6 +37,19 @@ has_cuda_device()
 	cudaError_t  err   = cudaGetDeviceCount(&count);
 
 	return err == cudaSuccess && count > 0;
+}
+
+bool
+skip_without_cuda_device(
+	benchmark::State& state)
+{
+	if(!has_cuda_device())
+		{
+			state.SkipWithError("No CUDA-capable device is available");
+			return true;
+		}
+
+	return false;
 }
 
 VEXT_BENCHMARK_NOINLINE void
@@ -77,6 +99,22 @@ private:
 	cudaEvent_t __stop  = nullptr;
 };
 
+std::vector<float>
+make_lhs_values(
+	const std::uint32_t size)
+{
+	std::vector<float> values(size, 1.25f);
+	return values;
+}
+
+std::vector<float>
+make_rhs_values(
+	const std::uint32_t size)
+{
+	std::vector<float> values(size, 2.0f);
+	return values;
+}
+
 template <typename Tp>
 Tp*
 copy_to_device(
@@ -87,17 +125,686 @@ copy_to_device(
 	return device;
 }
 
-bool
-skip_without_cuda_device(
+template <typename Tp>
+VEXT_BENCHMARK_NOINLINE void
+observe_tensor(
+	const vext::Tensor<Tp, vext::Backend::CUDA>& tensor)
+{
+	benchmark::DoNotOptimize(tensor.shape().length());
+}
+
+template <vext::core::BinaryOperation Kp>
+void
+BM_CudaBinaryKernel(
 	benchmark::State& state)
 {
-	if(!has_cuda_device())
+	if(skip_without_cuda_device(state))
 		{
-			state.SkipWithError("No CUDA-capable device is available");
-			return true;
+			return;
 		}
 
-	return false;
+	const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
+
+	float* lhs = copy_to_device(make_lhs_values(size));
+	float* rhs = copy_to_device(make_rhs_values(size));
+	float* out = vext::core::cuda::allocator::allocate<float>(size);
+
+	const CudaEventTimer timer;
+
+	for([[maybe_unused]] auto iteration : state)
+		{
+			timer.start();
+			vext::core::cuda::operations::binary<Kp>(out, lhs, rhs, size);
+			state.SetIterationTime(timer.stop_seconds());
+			benchmark::DoNotOptimize(out);
+		}
+
+	cudaDeviceSynchronize();
+
+	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float) * 3));
+
+	vext::core::cuda::allocator::deallocate(lhs);
+	vext::core::cuda::allocator::deallocate(rhs);
+	vext::core::cuda::allocator::deallocate(out);
+	vext::core::cuda::allocator::free();
+}
+
+template <vext::core::BinaryOperation Kp>
+void
+BM_CudaBinaryTensor(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	{
+		const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t size = rows * cols;
+
+		vext::Tensor<float, vext::Backend::CUDA> lhs(rows, cols);
+		vext::Tensor<float, vext::Backend::CUDA> rhs(rows, cols);
+
+		lhs.set_from(make_lhs_values(size));
+		rhs.set_from(make_rhs_values(size));
+
+		const CudaEventTimer timer;
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				timer.start();
+
+				if constexpr(Kp == vext::core::BinaryOperation::ADD)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = lhs + rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::SUB)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = lhs - rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::MUL)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = lhs * rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::DIV)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = lhs / rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::POW)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = lhs ^ rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::PRELU)
+					{
+						vext::Tensor<float, vext::Backend::CUDA> out(lhs);
+						out.prelu(rhs);
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+			}
+
+		cudaDeviceSynchronize();
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float) * 3));
+	}
+
+	vext::core::cuda::allocator::free();
+}
+
+template <vext::core::BinaryOperation Kp>
+void
+BM_CudaBinaryTensorInPlace(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	{
+		const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t size = rows * cols;
+
+		vext::Tensor<float, vext::Backend::CUDA> source(rows, cols);
+		vext::Tensor<float, vext::Backend::CUDA> rhs(rows, cols);
+
+		source.set_from(make_lhs_values(size));
+		rhs.set_from(make_rhs_values(size));
+
+		vext::Tensor<float, vext::Backend::CUDA> out(source);
+
+		const CudaEventTimer timer;
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				timer.start();
+
+				if constexpr(Kp == vext::core::BinaryOperation::ADD)
+					{
+						out += rhs;
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::SUB)
+					{
+						out -= rhs;
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::MUL)
+					{
+						out *= rhs;
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::DIV)
+					{
+						out /= rhs;
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::POW)
+					{
+						out ^= rhs;
+					}
+
+				state.SetIterationTime(timer.stop_seconds());
+				observe_tensor(out);
+			}
+
+		cudaDeviceSynchronize();
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float) * 3));
+	}
+
+	vext::core::cuda::allocator::free();
+}
+
+template <vext::core::LogicOperation Kp>
+void
+BM_CudaLogicalKernel(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
+
+	float*        lhs = copy_to_device(make_lhs_values(size));
+	float*        rhs = copy_to_device(make_rhs_values(size));
+	std::uint8_t* out = vext::core::cuda::allocator::allocate<std::uint8_t>(size);
+
+	const CudaEventTimer timer;
+
+	for([[maybe_unused]] auto iteration : state)
+		{
+			timer.start();
+			vext::core::cuda::operations::logical<Kp>(out, lhs, rhs, size);
+			state.SetIterationTime(timer.stop_seconds());
+			benchmark::DoNotOptimize(out);
+		}
+
+	cudaDeviceSynchronize();
+	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * (sizeof(float) * 2 + sizeof(std::uint8_t))));
+
+	vext::core::cuda::allocator::deallocate(lhs);
+	vext::core::cuda::allocator::deallocate(rhs);
+	vext::core::cuda::allocator::deallocate(out);
+	vext::core::cuda::allocator::free();
+}
+
+template <vext::core::LogicOperation Kp>
+void
+BM_CudaLogicalTensor(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	{
+		const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t size = rows * cols;
+
+		vext::Tensor<float, vext::Backend::CUDA> lhs(rows, cols);
+		vext::Tensor<float, vext::Backend::CUDA> rhs(rows, cols);
+
+		lhs.set_from(make_lhs_values(size));
+		rhs.set_from(make_rhs_values(size));
+
+		const CudaEventTimer timer;
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				timer.start();
+
+				if constexpr(Kp == vext::core::LogicOperation::EQUAL)
+					{
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs == rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::LogicOperation::NOT_EQUAL)
+					{
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs != rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::LogicOperation::LESS)
+					{
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs < rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::LogicOperation::LESS_EQUAL)
+					{
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs <= rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::LogicOperation::GREATER)
+					{
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs > rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::LogicOperation::GREATER_EQUAL)
+					{
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs >= rhs;
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+			}
+
+		cudaDeviceSynchronize();
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * (sizeof(float) * 2 + sizeof(std::uint8_t))));
+	}
+
+	vext::core::cuda::allocator::free();
+}
+
+template <vext::core::UnaryOperation Kp>
+void
+BM_CudaUnaryKernel(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
+
+	float* values = copy_to_device(std::vector<float>(size, 0.5f));
+
+	const CudaEventTimer timer;
+
+	for([[maybe_unused]] auto iteration : state)
+		{
+			timer.start();
+
+			if constexpr(Kp == vext::core::UnaryOperation::LEAKY_RELU || Kp == vext::core::UnaryOperation::ELU || Kp == vext::core::UnaryOperation::SWISH)
+				{
+					vext::core::cuda::operations::unary<Kp>(values, size, 0.25f);
+				}
+			else if constexpr(Kp == vext::core::UnaryOperation::LINEAR || Kp == vext::core::UnaryOperation::CLIP || Kp == vext::core::UnaryOperation::POW)
+				{
+					vext::core::cuda::operations::unary<Kp>(values, size, 0.75f, 1.25f);
+				}
+			else
+				{
+					vext::core::cuda::operations::unary<Kp>(values, size);
+				}
+
+			state.SetIterationTime(timer.stop_seconds());
+			benchmark::DoNotOptimize(values);
+		}
+
+	cudaDeviceSynchronize();
+
+	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float)));
+
+	vext::core::cuda::allocator::deallocate(values);
+	vext::core::cuda::allocator::free();
+}
+
+template <vext::core::UnaryOperation Kp>
+void
+BM_CudaUnaryTensor(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	{
+		const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t size = rows * cols;
+
+		vext::Tensor<float, vext::Backend::CUDA> source(rows, cols);
+		source.set_from(std::vector<float>(size, 0.5f));
+
+		const CudaEventTimer timer;
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				vext::Tensor<float, vext::Backend::CUDA> out(source);
+				timer.start();
+
+				if constexpr(Kp == vext::core::UnaryOperation::ABS)
+					{
+						out.abs();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SIN)
+					{
+						out.sin();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::COS)
+					{
+						out.cos();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::NEG)
+					{
+						-out;
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::EXP)
+					{
+						out.exp();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::LOG)
+					{
+						out.log();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SQRT)
+					{
+						out.sqrt();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SQUARE)
+					{
+						out.square();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::ROUND)
+					{
+						out.round();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SIGMOID)
+					{
+						out.sigmoid();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SOFT_RELU)
+					{
+						out.soft_relu();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::RELU)
+					{
+						out.relu();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SOFTMAX)
+					{
+						out.softmax();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SOFTMIN)
+					{
+						out.softmin();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::LOGSOFTMAX)
+					{
+						out.log_softmax();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::LEAKY_RELU)
+					{
+						out.leaky_relu(0.25f);
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::ELU)
+					{
+						out.elu(0.25f);
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SWISH)
+					{
+						out.swish(0.25f);
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::LINEAR)
+					{
+						out.linear(0.75f, 1.25f);
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::CLIP)
+					{
+						out.clip(0.25f, 0.75f);
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::POW)
+					{
+						out.pow(0.75f, 1.25f);
+					}
+
+				state.SetIterationTime(timer.stop_seconds());
+				observe_tensor(out);
+			}
+
+		cudaDeviceSynchronize();
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float)));
+	}
+
+	vext::core::cuda::allocator::free();
+}
+
+template <vext::core::ReductionOperation Kp>
+void
+BM_CudaReductionKernel(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
+
+	float* values = copy_to_device(std::vector<float>(size, 1.0f));
+	float* out    = vext::core::cuda::allocator::allocate<float>(1);
+
+	const std::vector<std::uint32_t> keep_dims{ 1 };
+	const std::vector<std::uint32_t> keep_strides{ 0 };
+	const std::vector<std::uint32_t> reduce_dims{ size };
+	const std::vector<std::uint32_t> reduce_strides{ 1 };
+
+	const CudaEventTimer timer;
+
+	for([[maybe_unused]] auto iteration : state)
+		{
+			timer.start();
+			vext::core::cuda::operations::reduce<Kp>(out, values, 1, size, keep_dims, keep_strides, reduce_dims, reduce_strides);
+			state.SetIterationTime(timer.stop_seconds());
+			benchmark::DoNotOptimize(out);
+		}
+
+	cudaDeviceSynchronize();
+
+	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float)));
+
+	vext::core::cuda::allocator::deallocate(values);
+	vext::core::cuda::allocator::deallocate(out);
+	vext::core::cuda::allocator::free();
+}
+
+template <vext::core::ReductionOperation Kp>
+void
+BM_CudaReductionTensor(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	{
+		const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
+
+		vext::Tensor<float, vext::Backend::CUDA> tensor(size);
+		tensor.set_from(std::vector<float>(size, 1.0f));
+
+		const CudaEventTimer timer;
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				timer.start();
+
+				if constexpr(Kp == vext::core::ReductionOperation::SUM)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.sum();
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::MEAN)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.mean();
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::MAX)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.max();
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::MIN)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.min();
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::PROD)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.prod();
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::STD)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.std();
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::VAR)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.var();
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+			}
+
+		cudaDeviceSynchronize();
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float)));
+	}
+
+	vext::core::cuda::allocator::free();
+}
+
+void
+BM_CudaMatmulKernel(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	const std::uint32_t m = static_cast<std::uint32_t>(state.range(0));
+	const std::uint32_t p = static_cast<std::uint32_t>(state.range(1));
+	const std::uint32_t n = static_cast<std::uint32_t>(state.range(2));
+
+	float* lhs = copy_to_device(std::vector<float>(m * p, 0.5f));
+	float* rhs = copy_to_device(std::vector<float>(p * n, 0.25f));
+	float* out = vext::core::cuda::allocator::allocate<float>(m * n);
+
+	const CudaEventTimer timer;
+
+	for([[maybe_unused]] auto iteration : state)
+		{
+			timer.start();
+			vext::core::cuda::operations::matmul(out, lhs, rhs, m, p, n);
+			state.SetIterationTime(timer.stop_seconds());
+			benchmark::DoNotOptimize(out);
+		}
+
+	cudaDeviceSynchronize();
+
+	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * m * n));
+	state.counters["flop"] = benchmark::Counter(static_cast<double>(state.iterations()) * 2.0 * m * n * p, benchmark::Counter::kIsRate);
+
+	vext::core::cuda::allocator::deallocate(lhs);
+	vext::core::cuda::allocator::deallocate(rhs);
+	vext::core::cuda::allocator::deallocate(out);
+	vext::core::cuda::allocator::free();
+}
+
+void
+BM_CudaTensorMatmul(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	{
+		const std::uint32_t m = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t p = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t n = static_cast<std::uint32_t>(state.range(2));
+
+		const vext::Tensor<float, vext::Backend::CUDA> lhs(m, p);
+		const vext::Tensor<float, vext::Backend::CUDA> rhs(p, n);
+		const CudaEventTimer                           timer;
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				timer.start();
+				const vext::Tensor<float, vext::Backend::CUDA> out = lhs.matmul(rhs);
+				state.SetIterationTime(timer.stop_seconds());
+				observe_tensor(out);
+			}
+
+		cudaDeviceSynchronize();
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * m * n));
+		state.counters["flop"] = benchmark::Counter(static_cast<double>(state.iterations()) * 2.0 * m * n * p, benchmark::Counter::kIsRate);
+	}
+
+	vext::core::cuda::allocator::free();
+}
+
+void
+BM_CudaNnLinearForward(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	{
+		const std::uint32_t                                size = static_cast<std::uint32_t>(state.range(0));
+		const vext::Tensor<float, vext::Backend::CUDA>     input(size, size);
+		const vext::nn::layer::Linear<vext::Backend::CUDA> layer(size, size);
+
+		const CudaEventTimer timer;
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				timer.start();
+				const vext::Tensor<float, vext::Backend::CUDA> out = layer(input);
+				state.SetIterationTime(timer.stop_seconds());
+				observe_tensor(out);
+			}
+
+		cudaDeviceSynchronize();
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size * size));
+		state.counters["flop"] = benchmark::Counter(static_cast<double>(state.iterations()) * 2.0 * size * size * size, benchmark::Counter::kIsRate);
+	}
+
+	vext::core::cuda::allocator::free();
 }
 
 void
@@ -119,7 +826,9 @@ BM_CudaAllocatorSmall(
 		}
 
 	cudaDeviceSynchronize();
+
 	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * bytes));
+
 	vext::core::cuda::allocator::free();
 }
 
@@ -142,7 +851,9 @@ BM_CudaAllocatorLarge(
 		}
 
 	cudaDeviceSynchronize();
+
 	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * bytes));
+
 	vext::core::cuda::allocator::free();
 }
 
@@ -155,195 +866,125 @@ BM_CudaTensorConstruct(
 			return;
 		}
 
-	const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
-	const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
+	{
+		const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
 
-	for([[maybe_unused]] auto iteration : state)
-		{
-			vext::Tensor<float, vext::Backend::CUDA> tensor(rows, cols);
-			benchmark::DoNotOptimize(tensor.shape().length());
-		}
+		for([[maybe_unused]] auto iteration : state)
+			{
+				const vext::Tensor<float, vext::Backend::CUDA> tensor(rows, cols);
+				observe_tensor(tensor);
+			}
 
-	cudaDeviceSynchronize();
-	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * rows * cols));
-}
+		cudaDeviceSynchronize();
 
-void
-BM_CudaElementwiseAddKernel(
-	benchmark::State& state)
-{
-	if(skip_without_cuda_device(state))
-		{
-			return;
-		}
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * rows * cols));
+	}
 
-	const std::uint32_t  size = static_cast<std::uint32_t>(state.range(0));
-	std::vector<float>   host_lhs(size, 1.25f);
-	std::vector<float>   host_rhs(size, 2.0f);
-	float*               lhs = copy_to_device(host_lhs);
-	float*               rhs = copy_to_device(host_rhs);
-	float*               out = vext::core::cuda::allocator::allocate<float>(size);
-	const CudaEventTimer timer;
-
-	for([[maybe_unused]] auto iteration : state)
-		{
-			timer.start();
-			vext::core::cuda::operations::binary<vext::core::BinaryOperation::ADD>(out, lhs, rhs, size);
-			state.SetIterationTime(timer.stop_seconds());
-			benchmark::DoNotOptimize(out);
-		}
-
-	cudaDeviceSynchronize();
-	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
-	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float) * 3));
-
-	vext::core::cuda::allocator::deallocate(lhs);
-	vext::core::cuda::allocator::deallocate(rhs);
-	vext::core::cuda::allocator::deallocate(out);
 	vext::core::cuda::allocator::free();
 }
 
-void
-BM_CudaTensorAdd(
-	benchmark::State& state)
-{
-	if(skip_without_cuda_device(state))
-		{
-			return;
-		}
-
-	const std::uint32_t                            rows = static_cast<std::uint32_t>(state.range(0));
-	const std::uint32_t                            cols = static_cast<std::uint32_t>(state.range(1));
-	const vext::Tensor<float, vext::Backend::CUDA> lhs(rows, cols);
-	const vext::Tensor<float, vext::Backend::CUDA> rhs(rows, cols);
-	const CudaEventTimer                           timer;
-
-	for([[maybe_unused]] auto iteration : state)
-		{
-			timer.start();
-			vext::Tensor<float, vext::Backend::CUDA> out = lhs + rhs;
-			state.SetIterationTime(timer.stop_seconds());
-			benchmark::DoNotOptimize(out.shape().length());
-		}
-
-	cudaDeviceSynchronize();
-	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * rows * cols));
-	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * rows * cols * sizeof(float) * 3));
 }
 
-void
-BM_CudaReductionSumKernel(
-	benchmark::State& state)
-{
-	if(skip_without_cuda_device(state))
-		{
-			return;
-		}
+BENCHMARK(BM_CudaAllocatorSmall)->Arg(4096)->Iterations(200000);
+BENCHMARK(BM_CudaAllocatorLarge)->Arg(32 * 1024 * 1024)->Iterations(128);
+BENCHMARK(BM_CudaTensorConstruct)->Args({ 4096, 4096 })->Iterations(32);
 
-	const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
-	std::vector<float>  host_values(size, 1.25f);
-	float*              values = copy_to_device(host_values);
-	float*              out    = vext::core::cuda::allocator::allocate<float>(1);
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOperation::ADD)->Name("BM_CudaBinaryKernel/ADD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOperation::ADD)->Name("BM_CudaBinaryTensor/ADD")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::core::BinaryOperation::ADD)->Name("BM_CudaBinaryTensorInPlace/ADD")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOperation::SUB)->Name("BM_CudaBinaryKernel/SUB")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOperation::SUB)->Name("BM_CudaBinaryTensor/SUB")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::core::BinaryOperation::SUB)->Name("BM_CudaBinaryTensorInPlace/SUB")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOperation::MUL)->Name("BM_CudaBinaryKernel/MUL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOperation::MUL)->Name("BM_CudaBinaryTensor/MUL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::core::BinaryOperation::MUL)->Name("BM_CudaBinaryTensorInPlace/MUL")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOperation::DIV)->Name("BM_CudaBinaryKernel/DIV")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOperation::DIV)->Name("BM_CudaBinaryTensor/DIV")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::core::BinaryOperation::DIV)->Name("BM_CudaBinaryTensorInPlace/DIV")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOperation::POW)->Name("BM_CudaBinaryKernel/POW")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOperation::POW)->Name("BM_CudaBinaryTensor/POW")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::core::BinaryOperation::POW)->Name("BM_CudaBinaryTensorInPlace/POW")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOperation::PRELU)->Name("BM_CudaBinaryKernel/PRELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOperation::PRELU)->Name("BM_CudaBinaryTensor/PRELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOperation::MIN)->Name("BM_CudaBinaryKernel/MIN/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOperation::MAX)->Name("BM_CudaBinaryKernel/MAX/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
 
-	const std::vector<std::uint32_t> keep_dims{ 1 };
-	const std::vector<std::uint32_t> keep_strides{ 0 };
-	const std::vector<std::uint32_t> reduce_dims{ size };
-	const std::vector<std::uint32_t> reduce_strides{ 1 };
-	const CudaEventTimer             timer;
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOperation::EQUAL)->Name("BM_CudaLogicalKernel/EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOperation::EQUAL)->Name("BM_CudaLogicalTensor/EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOperation::NOT_EQUAL)->Name("BM_CudaLogicalKernel/NOT_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOperation::NOT_EQUAL)->Name("BM_CudaLogicalTensor/NOT_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOperation::LESS)->Name("BM_CudaLogicalKernel/LESS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOperation::LESS)->Name("BM_CudaLogicalTensor/LESS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOperation::LESS_EQUAL)->Name("BM_CudaLogicalKernel/LESS_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOperation::LESS_EQUAL)->Name("BM_CudaLogicalTensor/LESS_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOperation::GREATER)->Name("BM_CudaLogicalKernel/GREATER")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOperation::GREATER)->Name("BM_CudaLogicalTensor/GREATER")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOperation::GREATER_EQUAL)->Name("BM_CudaLogicalKernel/GREATER_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOperation::GREATER_EQUAL)->Name("BM_CudaLogicalTensor/GREATER_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
 
-	for([[maybe_unused]] auto iteration : state)
-		{
-			timer.start();
-			vext::core::cuda::operations::reduce<vext::core::ReductionOperation::SUM>(out, values, 1, size, keep_dims, keep_strides, reduce_dims, reduce_strides);
-			state.SetIterationTime(timer.stop_seconds());
-			benchmark::DoNotOptimize(out);
-		}
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::ABS)->Name("BM_CudaUnaryKernel/ABS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::ABS)->Name("BM_CudaUnaryTensor/ABS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::SIN)->Name("BM_CudaUnaryKernel/SIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::SIN)->Name("BM_CudaUnaryTensor/SIN")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::COS)->Name("BM_CudaUnaryKernel/COS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::COS)->Name("BM_CudaUnaryTensor/COS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::TANH)->Name("BM_CudaUnaryKernel/TANH/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::NEG)->Name("BM_CudaUnaryKernel/NEG")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::NEG)->Name("BM_CudaUnaryTensor/NEG")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::EXP)->Name("BM_CudaUnaryKernel/EXP")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::EXP)->Name("BM_CudaUnaryTensor/EXP")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::LOG)->Name("BM_CudaUnaryKernel/LOG")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::LOG)->Name("BM_CudaUnaryTensor/LOG")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::SQRT)->Name("BM_CudaUnaryKernel/SQRT")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::SQRT)->Name("BM_CudaUnaryTensor/SQRT")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::SQUARE)->Name("BM_CudaUnaryKernel/SQUARE")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::SQUARE)->Name("BM_CudaUnaryTensor/SQUARE")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::ROUND)->Name("BM_CudaUnaryKernel/ROUND")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::ROUND)->Name("BM_CudaUnaryTensor/ROUND")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::SIGMOID)->Name("BM_CudaUnaryKernel/SIGMOID")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::SIGMOID)->Name("BM_CudaUnaryTensor/SIGMOID")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::SOFT_RELU)->Name("BM_CudaUnaryKernel/SOFT_RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::SOFT_RELU)->Name("BM_CudaUnaryTensor/SOFT_RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::RELU)->Name("BM_CudaUnaryKernel/RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::RELU)->Name("BM_CudaUnaryTensor/RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::SOFTMAX)->Name("BM_CudaUnaryKernel/SOFTMAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::SOFTMAX)->Name("BM_CudaUnaryTensor/SOFTMAX")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::SOFTMIN)->Name("BM_CudaUnaryKernel/SOFTMIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::SOFTMIN)->Name("BM_CudaUnaryTensor/SOFTMIN")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::LOGSOFTMAX)->Name("BM_CudaUnaryKernel/LOGSOFTMAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::LOGSOFTMAX)->Name("BM_CudaUnaryTensor/LOGSOFTMAX")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::LEAKY_RELU)->Name("BM_CudaUnaryKernel/LEAKY_RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::LEAKY_RELU)->Name("BM_CudaUnaryTensor/LEAKY_RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::ELU)->Name("BM_CudaUnaryKernel/ELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::ELU)->Name("BM_CudaUnaryTensor/ELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::SWISH)->Name("BM_CudaUnaryKernel/SWISH")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::SWISH)->Name("BM_CudaUnaryTensor/SWISH")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::LINEAR)->Name("BM_CudaUnaryKernel/LINEAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::LINEAR)->Name("BM_CudaUnaryTensor/LINEAR")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::CLIP)->Name("BM_CudaUnaryKernel/CLIP")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::CLIP)->Name("BM_CudaUnaryTensor/CLIP")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOperation::POW)->Name("BM_CudaUnaryKernel/UNARY_POW")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOperation::POW)->Name("BM_CudaUnaryTensor/UNARY_POW")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
 
-	cudaDeviceSynchronize();
-	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
-	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float)));
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOperation::SUM)->Name("BM_CudaReductionKernel/SUM")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOperation::SUM)->Name("BM_CudaReductionTensor/SUM")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOperation::MEAN)->Name("BM_CudaReductionKernel/MEAN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOperation::MEAN)->Name("BM_CudaReductionTensor/MEAN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOperation::MAX)->Name("BM_CudaReductionKernel/MAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOperation::MAX)->Name("BM_CudaReductionTensor/MAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOperation::MIN)->Name("BM_CudaReductionKernel/MIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOperation::MIN)->Name("BM_CudaReductionTensor/MIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOperation::PROD)->Name("BM_CudaReductionKernel/PROD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOperation::PROD)->Name("BM_CudaReductionTensor/PROD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOperation::STD)->Name("BM_CudaReductionKernel/STD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOperation::STD)->Name("BM_CudaReductionTensor/STD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOperation::VAR)->Name("BM_CudaReductionKernel/VAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOperation::VAR)->Name("BM_CudaReductionTensor/VAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
 
-	vext::core::cuda::allocator::deallocate(values);
-	vext::core::cuda::allocator::deallocate(out);
-	vext::core::cuda::allocator::free();
-}
-
-void
-BM_CudaMatmulKernel(
-	benchmark::State& state)
-{
-	if(skip_without_cuda_device(state))
-		{
-			return;
-		}
-
-	const std::uint32_t m = static_cast<std::uint32_t>(state.range(0));
-	const std::uint32_t p = static_cast<std::uint32_t>(state.range(1));
-	const std::uint32_t n = static_cast<std::uint32_t>(state.range(2));
-
-	float*               lhs = copy_to_device(std::vector<float>(m * p, 0.5f));
-	float*               rhs = copy_to_device(std::vector<float>(p * n, 0.25f));
-	float*               out = vext::core::cuda::allocator::allocate<float>(m * n);
-	const CudaEventTimer timer;
-
-	for([[maybe_unused]] auto iteration : state)
-		{
-			timer.start();
-			vext::core::cuda::operations::matmul(out, lhs, rhs, m, p, n);
-			state.SetIterationTime(timer.stop_seconds());
-			benchmark::DoNotOptimize(out);
-		}
-
-	cudaDeviceSynchronize();
-	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * m * n));
-	state.counters["flop"] = benchmark::Counter(static_cast<double>(state.iterations()) * 2.0 * m * n * p, benchmark::Counter::kIsRate);
-
-	vext::core::cuda::allocator::deallocate(lhs);
-	vext::core::cuda::allocator::deallocate(rhs);
-	vext::core::cuda::allocator::deallocate(out);
-	vext::core::cuda::allocator::free();
-}
-
-void
-BM_CudaTensorMatmul(
-	benchmark::State& state)
-{
-	if(skip_without_cuda_device(state))
-		{
-			return;
-		}
-
-	const std::uint32_t m = static_cast<std::uint32_t>(state.range(0));
-	const std::uint32_t p = static_cast<std::uint32_t>(state.range(1));
-	const std::uint32_t n = static_cast<std::uint32_t>(state.range(2));
-
-	const vext::Tensor<float, vext::Backend::CUDA> lhs(m, p);
-	const vext::Tensor<float, vext::Backend::CUDA> rhs(p, n);
-	const CudaEventTimer                           timer;
-
-	for([[maybe_unused]] auto iteration : state)
-		{
-			timer.start();
-			vext::Tensor<float, vext::Backend::CUDA> out = lhs.matmul(rhs);
-			state.SetIterationTime(timer.stop_seconds());
-			benchmark::DoNotOptimize(out.shape().length());
-		}
-
-	cudaDeviceSynchronize();
-	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * m * n));
-	state.counters["flop"] = benchmark::Counter(static_cast<double>(state.iterations()) * 2.0 * m * n * p, benchmark::Counter::kIsRate);
-}
-
-}
-
-BENCHMARK(BM_CudaAllocatorSmall)->Arg(256)->Arg(4096)->Iterations(100000);
-BENCHMARK(BM_CudaAllocatorLarge)->Arg(2 * 1024 * 1024)->Arg(32 * 1024 * 1024)->Iterations(16);
-BENCHMARK(BM_CudaTensorConstruct)->Args({ 256, 256 })->Args({ 1024, 1024 })->Iterations(16);
-BENCHMARK(BM_CudaElementwiseAddKernel)->Arg(1 << 16)->Arg(1 << 20)->Iterations(64)->UseManualTime();
-BENCHMARK(BM_CudaTensorAdd)->Args({ 256, 256 })->Args({ 1024, 1024 })->Iterations(16)->UseManualTime();
-BENCHMARK(BM_CudaReductionSumKernel)->Arg(1 << 16)->Arg(1 << 20)->Iterations(64)->UseManualTime();
-BENCHMARK(BM_CudaMatmulKernel)->Args({ 64, 64, 64 })->Args({ 128, 128, 128 })->Iterations(8)->UseManualTime();
-BENCHMARK(BM_CudaTensorMatmul)->Args({ 64, 64, 64 })->Args({ 128, 128, 128 })->Iterations(8)->UseManualTime();
+BENCHMARK(BM_CudaMatmulKernel)->Args({ MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE })->Iterations(MATMUL_ITERS)->UseManualTime();
+BENCHMARK(BM_CudaTensorMatmul)->Args({ MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE })->Iterations(MATMUL_ITERS)->UseManualTime();
+BENCHMARK(BM_CudaNnLinearForward)->Arg(MATRIX_SIZE)->Iterations(MATMUL_ITERS)->UseManualTime();
 
 BENCHMARK_MAIN();
 

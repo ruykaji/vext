@@ -1,17 +1,27 @@
 #include <benchmark/benchmark.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
 #include <vext/core/cpu/allocator.hpp>
 #include <vext/core/cpu/operations/elementwise_binary.hpp>
+#include <vext/core/cpu/operations/elementwise_logical.hpp>
+#include <vext/core/cpu/operations/elementwise_unary.hpp>
 #include <vext/core/cpu/operations/linear_algebra.hpp>
 #include <vext/core/cpu/operations/reduction.hpp>
+#include <vext/nn/layer/linear.hpp>
 #include <vext/tensor.hpp>
 
 namespace
 {
+
+constexpr std::uint32_t ELEMENT_COUNT         = 1U << 24U;
+constexpr std::uint32_t INPLACE_ELEMENT_COUNT = 1U << 20U;
+constexpr std::uint32_t MATRIX_SIZE           = 512U;
+constexpr std::int32_t  ELEMENT_ITERS         = 16;
+constexpr std::int32_t  MATMUL_ITERS          = 16;
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VEXT_BENCHMARK_NOINLINE __attribute__((noinline))
@@ -24,100 +34,47 @@ observe_buffer(
 	std::uint8_t* ptr)
 {
 	ptr[0] = static_cast<std::uint8_t>(ptr[0] + 1);
-
 	benchmark::DoNotOptimize(ptr[0]);
 	benchmark::ClobberMemory();
 }
 
 template <typename Tp>
 VEXT_BENCHMARK_NOINLINE void
-observe_cpu_tensor(
+observe_tensor(
 	const vext::Tensor<Tp>& tensor)
 {
 	benchmark::DoNotOptimize(tensor.item(0));
 }
 
-void
-BM_CpuAllocatorSmall(
-	benchmark::State& state)
+std::vector<float>
+make_lhs_values(
+	const std::uint32_t size)
 {
-	const std::uint64_t bytes = static_cast<std::uint64_t>(state.range(0));
-
-	for([[maybe_unused]] auto iteration : state)
-		{
-			std::uint8_t* ptr = vext::core::cpu::allocator::allocate<std::uint8_t>(bytes);
-			benchmark::DoNotOptimize(ptr);
-			observe_buffer(ptr);
-			vext::core::cpu::allocator::deallocate(ptr);
-		}
-
-	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * bytes));
-	vext::core::cpu::allocator::free();
+	std::vector<float> values(size, 1.25f);
+	return values;
 }
 
-void
-BM_CpuAllocatorLarge(
-	benchmark::State& state)
+std::vector<float>
+make_rhs_values(
+	const std::uint32_t size)
 {
-	const std::uint64_t bytes = static_cast<std::uint64_t>(state.range(0));
-
-	for([[maybe_unused]] auto iteration : state)
-		{
-			std::uint8_t* ptr = vext::core::cpu::allocator::allocate<std::uint8_t>(bytes);
-			benchmark::DoNotOptimize(ptr);
-			observe_buffer(ptr);
-			vext::core::cpu::allocator::deallocate(ptr);
-		}
-
-	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * bytes));
-	vext::core::cpu::allocator::free();
+	std::vector<float> values(size, 2.0f);
+	return values;
 }
 
+template <vext::core::BinaryOperation Kp>
 void
-BM_CpuTensorConstruct(
-	benchmark::State& state)
-{
-	const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
-	const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
-
-	for([[maybe_unused]] auto iteration : state)
-		{
-			vext::Tensor<float> tensor(rows, cols);
-			observe_cpu_tensor(tensor);
-		}
-
-	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * rows * cols));
-}
-
-void
-BM_CpuTensorCopy(
-	benchmark::State& state)
-{
-	const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
-	const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
-	const vext::Tensor<float> source(rows, cols);
-
-	for([[maybe_unused]] auto iteration : state)
-		{
-			vext::Tensor<float> copy(source);
-			observe_cpu_tensor(copy);
-		}
-
-	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * rows * cols * sizeof(float)));
-}
-
-void
-BM_CpuElementwiseAddKernel(
+BM_CpuBinaryKernel(
 	benchmark::State& state)
 {
 	const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
-	std::vector<float>  lhs(size, 1.25f);
-	std::vector<float>  rhs(size, 2.0f);
+	std::vector<float>  lhs  = make_lhs_values(size);
+	std::vector<float>  rhs  = make_rhs_values(size);
 	std::vector<float>  out(size, 0.0f);
 
 	for([[maybe_unused]] auto iteration : state)
 		{
-			vext::core::cpu::operations::binary<vext::core::BinaryOperation::ADD>(out.data(), lhs.data(), rhs.data(), size);
+			vext::core::cpu::operations::binary<Kp>(out.data(), lhs.data(), rhs.data(), size);
 			benchmark::DoNotOptimize(out.data());
 			benchmark::ClobberMemory();
 		}
@@ -126,32 +83,347 @@ BM_CpuElementwiseAddKernel(
 	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float) * 3));
 }
 
+template <vext::core::BinaryOperation Kp>
 void
-BM_CpuTensorAdd(
+BM_CpuBinaryTensor(
 	benchmark::State& state)
 {
-	const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
-	const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
-	const vext::Tensor<float> lhs(rows, cols);
-	const vext::Tensor<float> rhs(rows, cols);
+	{
+		const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t size = rows * cols;
 
-	for([[maybe_unused]] auto iteration : state)
-		{
-			vext::Tensor<float> out = lhs + rhs;
-			observe_cpu_tensor(out);
-		}
+		vext::Tensor<float> lhs(rows, cols);
+		vext::Tensor<float> rhs(rows, cols);
 
-	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * rows * cols));
-	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * rows * cols * sizeof(float) * 3));
+		lhs.set_from(make_lhs_values(size));
+		rhs.set_from(make_rhs_values(size));
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				if constexpr(Kp == vext::core::BinaryOperation::ADD)
+					{
+						const vext::Tensor<float> out = lhs + rhs;
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::SUB)
+					{
+						const vext::Tensor<float> out = lhs - rhs;
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::MUL)
+					{
+						const vext::Tensor<float> out = lhs * rhs;
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::DIV)
+					{
+						const vext::Tensor<float> out = lhs / rhs;
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::POW)
+					{
+						const vext::Tensor<float> out = lhs ^ rhs;
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::PRELU)
+					{
+						vext::Tensor<float> out(lhs);
+						out.prelu(rhs);
+						observe_tensor(out);
+					}
+			}
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float) * 3));
+	}
+
+	vext::core::cpu::allocator::free();
 }
 
+template <vext::core::BinaryOperation Kp>
 void
-BM_CpuReductionSumKernel(
+BM_CpuBinaryTensorInPlace(
+	benchmark::State& state)
+{
+	{
+		const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t size = rows * cols;
+
+		vext::Tensor<float> source(rows, cols);
+		vext::Tensor<float> rhs(rows, cols);
+
+		source.set_from(make_lhs_values(size));
+		rhs.set_from(make_rhs_values(size));
+
+		vext::Tensor<float> out(source);
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				if constexpr(Kp == vext::core::BinaryOperation::ADD)
+					{
+						out += rhs;
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::SUB)
+					{
+						out -= rhs;
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::MUL)
+					{
+						out *= rhs;
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::DIV)
+					{
+						out /= rhs;
+					}
+				else if constexpr(Kp == vext::core::BinaryOperation::POW)
+					{
+						out ^= rhs;
+					}
+
+				observe_tensor(out);
+			}
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float) * 3));
+	}
+
+	vext::core::cpu::allocator::free();
+}
+
+template <vext::core::LogicOperation Kp>
+void
+BM_CpuLogicalKernel(
 	benchmark::State& state)
 {
 	const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
-	std::vector<float>  values(size, 1.25f);
-	float               result = 0.0f;
+
+	std::vector<float>        lhs = make_lhs_values(size);
+	std::vector<float>        rhs = make_rhs_values(size);
+	std::vector<std::uint8_t> out(size, 0);
+
+	for([[maybe_unused]] auto iteration : state)
+		{
+			vext::core::cpu::operations::logical<Kp>(out.data(), lhs.data(), rhs.data(), size);
+			benchmark::DoNotOptimize(out.data());
+			benchmark::ClobberMemory();
+		}
+
+	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * (sizeof(float) * 2 + sizeof(std::uint8_t))));
+}
+
+template <vext::core::LogicOperation Kp>
+void
+BM_CpuLogicalTensor(
+	benchmark::State& state)
+{
+	{
+		const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t size = rows * cols;
+
+		vext::Tensor<float> lhs(rows, cols);
+		vext::Tensor<float> rhs(rows, cols);
+
+		lhs.set_from(make_lhs_values(size));
+		rhs.set_from(make_rhs_values(size));
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				if constexpr(Kp == vext::core::LogicOperation::EQUAL)
+					{
+						const vext::Tensor<std::uint8_t> out = lhs == rhs;
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::LogicOperation::NOT_EQUAL)
+					{
+						const vext::Tensor<std::uint8_t> out = lhs != rhs;
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::LogicOperation::LESS)
+					{
+						const vext::Tensor<std::uint8_t> out = lhs < rhs;
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::LogicOperation::LESS_EQUAL)
+					{
+						const vext::Tensor<std::uint8_t> out = lhs <= rhs;
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::LogicOperation::GREATER)
+					{
+						const vext::Tensor<std::uint8_t> out = lhs > rhs;
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::LogicOperation::GREATER_EQUAL)
+					{
+						const vext::Tensor<std::uint8_t> out = lhs >= rhs;
+						observe_tensor(out);
+					}
+			}
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * (sizeof(float) * 2 + sizeof(std::uint8_t))));
+	}
+
+	vext::core::cpu::allocator::free();
+}
+
+template <vext::core::UnaryOperation Kp>
+void
+BM_CpuUnaryKernel(
+	benchmark::State& state)
+{
+	const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
+
+	std::vector<float> values(size, 0.5f);
+
+	for([[maybe_unused]] auto iteration : state)
+		{
+			if constexpr(Kp == vext::core::UnaryOperation::LEAKY_RELU || Kp == vext::core::UnaryOperation::ELU || Kp == vext::core::UnaryOperation::SWISH)
+				{
+					vext::core::cpu::operations::unary<Kp>(values.data(), size, 0.25f);
+				}
+			else if constexpr(Kp == vext::core::UnaryOperation::LINEAR || Kp == vext::core::UnaryOperation::CLIP || Kp == vext::core::UnaryOperation::POW)
+				{
+					vext::core::cpu::operations::unary<Kp>(values.data(), size, 0.75f, 1.25f);
+				}
+			else
+				{
+					vext::core::cpu::operations::unary<Kp>(values.data(), size);
+				}
+
+			benchmark::DoNotOptimize(values.data());
+			benchmark::ClobberMemory();
+		}
+
+	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float)));
+}
+
+template <vext::core::UnaryOperation Kp>
+void
+BM_CpuUnaryTensor(
+	benchmark::State& state)
+{
+	{
+		const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t size = rows * cols;
+
+		vext::Tensor<float> source(rows, cols);
+		source.set_from(std::vector<float>(size, 0.5f));
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				vext::Tensor<float> out(source);
+
+				if constexpr(Kp == vext::core::UnaryOperation::ABS)
+					{
+						out.abs();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SIN)
+					{
+						out.sin();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::COS)
+					{
+						out.cos();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::NEG)
+					{
+						-out;
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::EXP)
+					{
+						out.exp();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::LOG)
+					{
+						out.log();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SQRT)
+					{
+						out.sqrt();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SQUARE)
+					{
+						out.square();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::ROUND)
+					{
+						out.round();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SIGMOID)
+					{
+						out.sigmoid();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SOFT_RELU)
+					{
+						out.soft_relu();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::RELU)
+					{
+						out.relu();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SOFTMAX)
+					{
+						out.softmax();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SOFTMIN)
+					{
+						out.softmin();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::LOGSOFTMAX)
+					{
+						out.log_softmax();
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::LEAKY_RELU)
+					{
+						out.leaky_relu(0.25f);
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::ELU)
+					{
+						out.elu(0.25f);
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::SWISH)
+					{
+						out.swish(0.25f);
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::LINEAR)
+					{
+						out.linear(0.75f, 1.25f);
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::CLIP)
+					{
+						out.clip(0.25f, 0.75f);
+					}
+				else if constexpr(Kp == vext::core::UnaryOperation::POW)
+					{
+						out.pow(0.75f, 1.25f);
+					}
+
+				observe_tensor(out);
+			}
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float)));
+	}
+
+	vext::core::cpu::allocator::free();
+}
+
+template <vext::core::ReductionOperation Kp>
+void
+BM_CpuReductionKernel(
+	benchmark::State& state)
+{
+	const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
+
+	std::vector<float> values(size, 1.0f);
+	float              result = 0.0f;
 
 	const std::vector<std::uint32_t> keep_dims{ 1 };
 	const std::vector<std::uint32_t> keep_strides{ 0 };
@@ -160,12 +432,69 @@ BM_CpuReductionSumKernel(
 
 	for([[maybe_unused]] auto iteration : state)
 		{
-			vext::core::cpu::operations::reduce<vext::core::ReductionOperation::SUM>(&result, values.data(), 1, size, keep_dims, keep_strides, reduce_dims, reduce_strides);
+			vext::core::cpu::operations::reduce<Kp>(&result, values.data(), 1, size, keep_dims, keep_strides, reduce_dims, reduce_strides);
 			benchmark::DoNotOptimize(result);
 		}
 
 	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
 	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float)));
+}
+
+template <vext::core::ReductionOperation Kp>
+void
+BM_CpuReductionTensor(
+	benchmark::State& state)
+{
+	{
+		const std::uint32_t size = static_cast<std::uint32_t>(state.range(0));
+
+		vext::Tensor<float> tensor(size);
+		tensor.set_from(std::vector<float>(size, 1.0f));
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				if constexpr(Kp == vext::core::ReductionOperation::SUM)
+					{
+						const vext::Tensor<float> out = tensor.sum();
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::MEAN)
+					{
+						const vext::Tensor<float> out = tensor.mean();
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::MAX)
+					{
+						const vext::Tensor<float> out = tensor.max();
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::MIN)
+					{
+						const vext::Tensor<float> out = tensor.min();
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::PROD)
+					{
+						const vext::Tensor<float> out = tensor.prod();
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::STD)
+					{
+						const vext::Tensor<float> out = tensor.std();
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::ReductionOperation::VAR)
+					{
+						const vext::Tensor<float> out = tensor.var();
+						observe_tensor(out);
+					}
+			}
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * size * sizeof(float)));
+	}
+
+	vext::core::cpu::allocator::free();
 }
 
 void
@@ -196,34 +525,228 @@ void
 BM_CpuTensorMatmul(
 	benchmark::State& state)
 {
-	const std::uint32_t m = static_cast<std::uint32_t>(state.range(0));
-	const std::uint32_t p = static_cast<std::uint32_t>(state.range(1));
-	const std::uint32_t n = static_cast<std::uint32_t>(state.range(2));
+	{
+		const std::uint32_t m = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t p = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t n = static_cast<std::uint32_t>(state.range(2));
 
-	const vext::Tensor<float> lhs(m, p);
-	const vext::Tensor<float> rhs(p, n);
+		const vext::Tensor<float> lhs(m, p);
+		const vext::Tensor<float> rhs(p, n);
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				const vext::Tensor<float> out = lhs.matmul(rhs);
+				observe_tensor(out);
+			}
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * m * n));
+		state.counters["flop"] = benchmark::Counter(static_cast<double>(state.iterations()) * 2.0 * m * n * p, benchmark::Counter::kIsRate);
+	}
+
+	vext::core::cpu::allocator::free();
+}
+
+void
+BM_CpuNnLinearForward(
+	benchmark::State& state)
+{
+	{
+		const std::uint32_t                               size = static_cast<std::uint32_t>(state.range(0));
+		const vext::Tensor<float>                         input(size, size);
+		const vext::nn::layer::Linear<vext::Backend::CPU> layer(size, size);
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				const vext::Tensor<float> out = layer(input);
+				observe_tensor(out);
+			}
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * size * size));
+		state.counters["flop"] = benchmark::Counter(static_cast<double>(state.iterations()) * 2.0 * size * size * size, benchmark::Counter::kIsRate);
+	}
+
+	vext::core::cpu::allocator::free();
+}
+
+void
+BM_CpuAllocatorSmall(
+	benchmark::State& state)
+{
+	const std::uint64_t bytes = static_cast<std::uint64_t>(state.range(0));
 
 	for([[maybe_unused]] auto iteration : state)
 		{
-			vext::Tensor<float> out = lhs.matmul(rhs);
-			observe_cpu_tensor(out);
+			std::uint8_t* ptr = vext::core::cpu::allocator::allocate<std::uint8_t>(bytes);
+			observe_buffer(ptr);
+			vext::core::cpu::allocator::deallocate(ptr);
 		}
 
-	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * m * n));
-	state.counters["flop"] = benchmark::Counter(static_cast<double>(state.iterations()) * 2.0 * m * n * p, benchmark::Counter::kIsRate);
+	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * bytes));
+
+	vext::core::cpu::allocator::free();
+}
+
+void
+BM_CpuAllocatorLarge(
+	benchmark::State& state)
+{
+	const std::uint64_t bytes = static_cast<std::uint64_t>(state.range(0));
+
+	for([[maybe_unused]] auto iteration : state)
+		{
+			std::uint8_t* ptr = vext::core::cpu::allocator::allocate<std::uint8_t>(bytes);
+			observe_buffer(ptr);
+			vext::core::cpu::allocator::deallocate(ptr);
+		}
+
+	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * bytes));
+
+	vext::core::cpu::allocator::free();
+}
+
+void
+BM_CpuTensorConstruct(
+	benchmark::State& state)
+{
+	{
+		const std::uint32_t rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t cols = static_cast<std::uint32_t>(state.range(1));
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				const vext::Tensor<float> tensor(rows, cols);
+				observe_tensor(tensor);
+			}
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * rows * cols));
+	}
+
+	vext::core::cpu::allocator::free();
+}
+
+void
+BM_CpuTensorCopy(
+	benchmark::State& state)
+{
+	{
+		const std::uint32_t       rows = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t       cols = static_cast<std::uint32_t>(state.range(1));
+		const vext::Tensor<float> source(rows, cols);
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				const vext::Tensor<float> copy(source);
+				observe_tensor(copy);
+			}
+
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * rows * cols * sizeof(float)));
+	}
+
+	vext::core::cpu::allocator::free();
 }
 
 }
 
-BENCHMARK(BM_CpuAllocatorSmall)->Arg(256)->Arg(4096)->Iterations(100000);
-BENCHMARK(BM_CpuAllocatorLarge)->Arg(2 * 1024 * 1024)->Arg(32 * 1024 * 1024)->Iterations(16);
-BENCHMARK(BM_CpuTensorConstruct)->Args({ 256, 256 })->Args({ 1024, 1024 })->Iterations(16);
-BENCHMARK(BM_CpuTensorCopy)->Args({ 256, 256 })->Args({ 1024, 1024 })->Iterations(16);
-BENCHMARK(BM_CpuElementwiseAddKernel)->Arg(1 << 16)->Arg(1 << 20)->Iterations(64);
-BENCHMARK(BM_CpuTensorAdd)->Args({ 256, 256 })->Args({ 1024, 1024 })->Iterations(16);
-BENCHMARK(BM_CpuReductionSumKernel)->Arg(1 << 16)->Arg(1 << 20)->Iterations(64);
-BENCHMARK(BM_CpuMatmulKernel)->Args({ 64, 64, 64 })->Args({ 128, 128, 128 })->Iterations(8);
-BENCHMARK(BM_CpuTensorMatmul)->Args({ 64, 64, 64 })->Args({ 128, 128, 128 })->Iterations(8);
+BENCHMARK(BM_CpuAllocatorSmall)->Arg(4096)->Iterations(200000);
+BENCHMARK(BM_CpuAllocatorLarge)->Arg(32 * 1024 * 1024)->Iterations(128);
+BENCHMARK(BM_CpuTensorConstruct)->Args({ 4096, 4096 })->Iterations(32);
+BENCHMARK(BM_CpuTensorCopy)->Args({ 4096, 4096 })->Iterations(32);
+
+BENCHMARK_TEMPLATE(BM_CpuBinaryKernel, vext::core::BinaryOperation::ADD)->Name("BM_CpuBinaryKernel/ADD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensor, vext::core::BinaryOperation::ADD)->Name("BM_CpuBinaryTensor/ADD")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensorInPlace, vext::core::BinaryOperation::ADD)->Name("BM_CpuBinaryTensorInPlace/ADD")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryKernel, vext::core::BinaryOperation::SUB)->Name("BM_CpuBinaryKernel/SUB")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensor, vext::core::BinaryOperation::SUB)->Name("BM_CpuBinaryTensor/SUB")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensorInPlace, vext::core::BinaryOperation::SUB)->Name("BM_CpuBinaryTensorInPlace/SUB")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryKernel, vext::core::BinaryOperation::MUL)->Name("BM_CpuBinaryKernel/MUL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensor, vext::core::BinaryOperation::MUL)->Name("BM_CpuBinaryTensor/MUL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensorInPlace, vext::core::BinaryOperation::MUL)->Name("BM_CpuBinaryTensorInPlace/MUL")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryKernel, vext::core::BinaryOperation::DIV)->Name("BM_CpuBinaryKernel/DIV")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensor, vext::core::BinaryOperation::DIV)->Name("BM_CpuBinaryTensor/DIV")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensorInPlace, vext::core::BinaryOperation::DIV)->Name("BM_CpuBinaryTensorInPlace/DIV")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryKernel, vext::core::BinaryOperation::POW)->Name("BM_CpuBinaryKernel/POW")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensor, vext::core::BinaryOperation::POW)->Name("BM_CpuBinaryTensor/POW")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensorInPlace, vext::core::BinaryOperation::POW)->Name("BM_CpuBinaryTensorInPlace/POW")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryKernel, vext::core::BinaryOperation::PRELU)->Name("BM_CpuBinaryKernel/PRELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryTensor, vext::core::BinaryOperation::PRELU)->Name("BM_CpuBinaryTensor/PRELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryKernel, vext::core::BinaryOperation::MIN)->Name("BM_CpuBinaryKernel/MIN/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuBinaryKernel, vext::core::BinaryOperation::MAX)->Name("BM_CpuBinaryKernel/MAX/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+
+BENCHMARK_TEMPLATE(BM_CpuLogicalKernel, vext::core::LogicOperation::EQUAL)->Name("BM_CpuLogicalKernel/EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalTensor, vext::core::LogicOperation::EQUAL)->Name("BM_CpuLogicalTensor/EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalKernel, vext::core::LogicOperation::NOT_EQUAL)->Name("BM_CpuLogicalKernel/NOT_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalTensor, vext::core::LogicOperation::NOT_EQUAL)->Name("BM_CpuLogicalTensor/NOT_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalKernel, vext::core::LogicOperation::LESS)->Name("BM_CpuLogicalKernel/LESS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalTensor, vext::core::LogicOperation::LESS)->Name("BM_CpuLogicalTensor/LESS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalKernel, vext::core::LogicOperation::LESS_EQUAL)->Name("BM_CpuLogicalKernel/LESS_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalTensor, vext::core::LogicOperation::LESS_EQUAL)->Name("BM_CpuLogicalTensor/LESS_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalKernel, vext::core::LogicOperation::GREATER)->Name("BM_CpuLogicalKernel/GREATER")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalTensor, vext::core::LogicOperation::GREATER)->Name("BM_CpuLogicalTensor/GREATER")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalKernel, vext::core::LogicOperation::GREATER_EQUAL)->Name("BM_CpuLogicalKernel/GREATER_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuLogicalTensor, vext::core::LogicOperation::GREATER_EQUAL)->Name("BM_CpuLogicalTensor/GREATER_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::ABS)->Name("BM_CpuUnaryKernel/ABS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::ABS)->Name("BM_CpuUnaryTensor/ABS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::SIN)->Name("BM_CpuUnaryKernel/SIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::SIN)->Name("BM_CpuUnaryTensor/SIN")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::COS)->Name("BM_CpuUnaryKernel/COS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::COS)->Name("BM_CpuUnaryTensor/COS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::TANH)->Name("BM_CpuUnaryKernel/TANH/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::NEG)->Name("BM_CpuUnaryKernel/NEG")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::NEG)->Name("BM_CpuUnaryTensor/NEG")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::EXP)->Name("BM_CpuUnaryKernel/EXP")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::EXP)->Name("BM_CpuUnaryTensor/EXP")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::LOG)->Name("BM_CpuUnaryKernel/LOG")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::LOG)->Name("BM_CpuUnaryTensor/LOG")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::SQRT)->Name("BM_CpuUnaryKernel/SQRT")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::SQRT)->Name("BM_CpuUnaryTensor/SQRT")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::SQUARE)->Name("BM_CpuUnaryKernel/SQUARE")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::SQUARE)->Name("BM_CpuUnaryTensor/SQUARE")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::ROUND)->Name("BM_CpuUnaryKernel/ROUND")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::ROUND)->Name("BM_CpuUnaryTensor/ROUND")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::SIGMOID)->Name("BM_CpuUnaryKernel/SIGMOID")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::SIGMOID)->Name("BM_CpuUnaryTensor/SIGMOID")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::SOFT_RELU)->Name("BM_CpuUnaryKernel/SOFT_RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::SOFT_RELU)->Name("BM_CpuUnaryTensor/SOFT_RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::RELU)->Name("BM_CpuUnaryKernel/RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::RELU)->Name("BM_CpuUnaryTensor/RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::SOFTMAX)->Name("BM_CpuUnaryKernel/SOFTMAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::SOFTMAX)->Name("BM_CpuUnaryTensor/SOFTMAX")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::SOFTMIN)->Name("BM_CpuUnaryKernel/SOFTMIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::SOFTMIN)->Name("BM_CpuUnaryTensor/SOFTMIN")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::LOGSOFTMAX)->Name("BM_CpuUnaryKernel/LOGSOFTMAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::LOGSOFTMAX)->Name("BM_CpuUnaryTensor/LOGSOFTMAX")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::LEAKY_RELU)->Name("BM_CpuUnaryKernel/LEAKY_RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::LEAKY_RELU)->Name("BM_CpuUnaryTensor/LEAKY_RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::ELU)->Name("BM_CpuUnaryKernel/ELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::ELU)->Name("BM_CpuUnaryTensor/ELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::SWISH)->Name("BM_CpuUnaryKernel/SWISH")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::SWISH)->Name("BM_CpuUnaryTensor/SWISH")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::LINEAR)->Name("BM_CpuUnaryKernel/LINEAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::LINEAR)->Name("BM_CpuUnaryTensor/LINEAR")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::CLIP)->Name("BM_CpuUnaryKernel/CLIP")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::CLIP)->Name("BM_CpuUnaryTensor/CLIP")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryKernel, vext::core::UnaryOperation::POW)->Name("BM_CpuUnaryKernel/UNARY_POW")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuUnaryTensor, vext::core::UnaryOperation::POW)->Name("BM_CpuUnaryTensor/UNARY_POW")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS);
+
+BENCHMARK_TEMPLATE(BM_CpuReductionKernel, vext::core::ReductionOperation::SUM)->Name("BM_CpuReductionKernel/SUM")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionTensor, vext::core::ReductionOperation::SUM)->Name("BM_CpuReductionTensor/SUM")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionKernel, vext::core::ReductionOperation::MEAN)->Name("BM_CpuReductionKernel/MEAN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionTensor, vext::core::ReductionOperation::MEAN)->Name("BM_CpuReductionTensor/MEAN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionKernel, vext::core::ReductionOperation::MAX)->Name("BM_CpuReductionKernel/MAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionTensor, vext::core::ReductionOperation::MAX)->Name("BM_CpuReductionTensor/MAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionKernel, vext::core::ReductionOperation::MIN)->Name("BM_CpuReductionKernel/MIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionTensor, vext::core::ReductionOperation::MIN)->Name("BM_CpuReductionTensor/MIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionKernel, vext::core::ReductionOperation::PROD)->Name("BM_CpuReductionKernel/PROD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionTensor, vext::core::ReductionOperation::PROD)->Name("BM_CpuReductionTensor/PROD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionKernel, vext::core::ReductionOperation::STD)->Name("BM_CpuReductionKernel/STD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionTensor, vext::core::ReductionOperation::STD)->Name("BM_CpuReductionTensor/STD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionKernel, vext::core::ReductionOperation::VAR)->Name("BM_CpuReductionKernel/VAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuReductionTensor, vext::core::ReductionOperation::VAR)->Name("BM_CpuReductionTensor/VAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+
+BENCHMARK(BM_CpuMatmulKernel)->Args({ MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE })->Iterations(MATMUL_ITERS);
+BENCHMARK(BM_CpuTensorMatmul)->Args({ MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE })->Iterations(MATMUL_ITERS);
+BENCHMARK(BM_CpuNnLinearForward)->Arg(MATRIX_SIZE)->Iterations(MATMUL_ITERS);
 
 BENCHMARK_MAIN();
 

@@ -922,7 +922,7 @@ private:
 	allocate(
 		T1* data)
 	{
-		const std::uint64_t count = __shape.length() * sizeof(T1);
+		const std::uint64_t count = __shape.length();
 
 		if constexpr(B1 == Backend::CPU)
 			{
