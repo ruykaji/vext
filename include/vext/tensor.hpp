@@ -1077,7 +1077,7 @@ private:
 	{
 		static_assert(B1 == B2 && B1 == B3 && B1 == B4, "Error: CSR Scatter operations cannot be performed on tensors with different Backends!");
 
-		Tensor<T2, B1> out(x.__shape[0] - 1);
+		Tensor<T2, B1> out(head.__shape[0] - 1);
 
 		if constexpr(B1 == Backend::CPU)
 			{
