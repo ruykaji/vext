@@ -2,11 +2,13 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include <cuda_runtime.h>
 
 #include <vext/core/cuda/allocator.cuh>
+#include <vext/core/cuda/operations/csr_scatter.cuh>
 #include <vext/core/cuda/operations/elementwise_binary.cuh>
 #include <vext/core/cuda/operations/elementwise_logical.cuh>
 #include <vext/core/cuda/operations/elementwise_unary.cuh>
@@ -172,6 +174,97 @@ TEST(CoreCudaReduction, ComputesFullBufferSum)
 
 	vext::core::cuda::allocator::deallocate(src);
 	vext::core::cuda::allocator::deallocate(out);
+	vext::core::cuda::allocator::free();
+}
+
+TEST(CoreCudaCsrScatter, ComputesSegmentAggregates)
+{
+	if(!has_cuda_device())
+		{
+			GTEST_SKIP() << "No CUDA-capable device is available";
+		}
+
+	const std::vector<float> src_values{
+		1.0f, 2.0f,
+		3.0f, 4.0f,
+		-2.0f, 5.0f,
+		4.0f, -1.0f
+	};
+	const std::vector<std::uint32_t> head_values{ 0, 2, 4, 4, 4 };
+	const std::vector<std::uint32_t> tail_values{ 0, 2, 1, 3 };
+
+	float*         src  = copy_to_device(src_values);
+	std::uint32_t* head = copy_to_device(head_values);
+	std::uint32_t* tail = copy_to_device(tail_values);
+	float*         out  = vext::core::cuda::allocator::allocate<float>(8);
+
+	check_cuda(cudaMemset(out, 0, 8 * sizeof(float)));
+	vext::core::cuda::operations::csr_scatter<vext::core::CSRScatterOperation::SUM>(out, src, head, tail, 4, 2);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 8), { -1.0f, 7.0f, 7.0f, 3.0f, 0.0f, 0.0f, 0.0f, 0.0f });
+
+	check_cuda(cudaMemset(out, 0, 8 * sizeof(float)));
+	vext::core::cuda::operations::csr_scatter<vext::core::CSRScatterOperation::MEAN>(out, src, head, tail, 4, 2);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 8), { -0.5f, 3.5f, 3.5f, 1.5f, 0.0f, 0.0f, 0.0f, 0.0f });
+
+	check_cuda(cudaMemset(out, 0, 8 * sizeof(float)));
+	vext::core::cuda::operations::csr_scatter<vext::core::CSRScatterOperation::MAX>(out, src, head, tail, 4, 2);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 8), { 1.0f, 5.0f, 4.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f });
+
+	check_cuda(cudaMemset(out, 0, 8 * sizeof(float)));
+	vext::core::cuda::operations::csr_scatter<vext::core::CSRScatterOperation::VAR>(out, src, head, tail, 4, 2);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 8), { 2.25f, 2.25f, 0.25f, 6.25f, 0.0f, 0.0f, 0.0f, 0.0f });
+
+	check_cuda(cudaMemset(out, 0, 8 * sizeof(float)));
+	vext::core::cuda::operations::csr_scatter<vext::core::CSRScatterOperation::STD>(out, src, head, tail, 4, 2);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 8), { 1.5f, 1.5f, 0.5f, 2.5f, 0.0f, 0.0f, 0.0f, 0.0f });
+
+	vext::core::cuda::allocator::deallocate(src);
+	vext::core::cuda::allocator::deallocate(head);
+	vext::core::cuda::allocator::deallocate(tail);
+	vext::core::cuda::allocator::deallocate(out);
+	vext::core::cuda::allocator::free();
+}
+
+TEST(CoreCudaCsrScatter, ComputesMinAndProductWhenOutputIsInitializedForTheOperation)
+{
+	if(!has_cuda_device())
+		{
+			GTEST_SKIP() << "No CUDA-capable device is available";
+		}
+
+	const std::vector<float> src_values{
+		1.0f, 2.0f,
+		3.0f, 4.0f,
+		-2.0f, 5.0f,
+		4.0f, -1.0f
+	};
+	const std::vector<std::uint32_t> head_values{ 0, 2, 4, 4, 4 };
+	const std::vector<std::uint32_t> tail_values{ 0, 2, 1, 3 };
+
+	float*         src     = copy_to_device(src_values);
+	std::uint32_t* head    = copy_to_device(head_values);
+	std::uint32_t* tail    = copy_to_device(tail_values);
+	float*         min_out = copy_to_device(std::vector<float>(8, std::numeric_limits<float>::max()));
+	float*         prod_out = copy_to_device(std::vector<float>(8, 1.0f));
+
+	vext::core::cuda::operations::csr_scatter<vext::core::CSRScatterOperation::MIN>(min_out, src, head, tail, 4, 2);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(min_out, 8), { -2.0f, 2.0f, 3.0f, -1.0f, std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() });
+
+	vext::core::cuda::operations::csr_scatter<vext::core::CSRScatterOperation::PROD>(prod_out, src, head, tail, 4, 2);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(prod_out, 8), { -2.0f, 10.0f, 12.0f, -4.0f, 1.0f, 1.0f, 1.0f, 1.0f });
+
+	vext::core::cuda::allocator::deallocate(src);
+	vext::core::cuda::allocator::deallocate(head);
+	vext::core::cuda::allocator::deallocate(tail);
+	vext::core::cuda::allocator::deallocate(min_out);
+	vext::core::cuda::allocator::deallocate(prod_out);
 	vext::core::cuda::allocator::free();
 }
 

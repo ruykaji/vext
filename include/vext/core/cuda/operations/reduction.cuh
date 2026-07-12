@@ -103,7 +103,8 @@ reduce(
 						}
 					else if constexpr(Kp == ReductionOperation::VAR || Kp == ReductionOperation::STD)
 						{
-							accumulator += ::cuda::std::pow(src[keep_offset + reduce_offset] - out[i], 2.0f);
+							const float diff = src[keep_offset + reduce_offset] - out[i];
+							accumulator += diff * diff;
 						}
 					else
 						{

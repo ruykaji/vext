@@ -10,6 +10,7 @@
 #include <utility>
 
 #include <vext/core/cpu/allocator.hpp>
+#include <vext/core/cpu/operations/csr_scatter.hpp>
 #include <vext/core/cpu/operations/elementwise_binary.hpp>
 #include <vext/core/cpu/operations/elementwise_logical.hpp>
 #include <vext/core/cpu/operations/elementwise_unary.hpp>
@@ -19,6 +20,7 @@
 
 #if VEXT_CUDA
 #include <vext/core/cuda/allocator.cuh>
+#include <vext/core/cuda/operations/csr_scatter.cuh>
 #include <vext/core/cuda/operations/elementwise_binary.cuh>
 #include <vext/core/cuda/operations/elementwise_logical.cuh>
 #include <vext/core/cuda/operations/elementwise_unary.cuh>
@@ -639,6 +641,69 @@ public:
 		return execute_reduction<core::ReductionOperation::STD, float>(*this, axis...);
 	}
 
+	template <Backend B2, Backend B3>
+	Tensor<T1, B1>
+	csr_scatter_sum(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail) const
+	{
+		return execute_csr_scatter<core::CSRScatterOperation::SUM, T1, B2, B3>(*this, head, tail);
+	}
+
+	template <Backend B2, Backend B3>
+	Tensor<float, B1>
+	csr_scatter_mean(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail) const
+	{
+		return execute_csr_scatter<core::CSRScatterOperation::MEAN, float, B2, B3>(*this, head, tail);
+	}
+
+	template <Backend B2, Backend B3>
+	Tensor<T1, B1>
+	csr_scatter_min(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail) const
+	{
+		return execute_csr_scatter<core::CSRScatterOperation::MIN, T1, B2, B3>(*this, head, tail);
+	}
+
+	template <Backend B2, Backend B3>
+	Tensor<T1, B1>
+	csr_scatter_max(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail) const
+	{
+		return execute_csr_scatter<core::CSRScatterOperation::MAX, T1, B2, B3>(*this, head, tail);
+	}
+
+	template <Backend B2, Backend B3>
+	Tensor<T1, B1>
+	csr_scatter_prod(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail) const
+	{
+		return execute_csr_scatter<core::CSRScatterOperation::PROD, T1, B2, B3>(*this, head, tail);
+	}
+
+	template <Backend B2, Backend B3>
+	Tensor<float, B1>
+	csr_scatter_var(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail) const
+	{
+		return execute_csr_scatter<core::CSRScatterOperation::VAR, float, B2, B3>(*this, head, tail);
+	}
+
+	template <Backend B2, Backend B3>
+	Tensor<float, B1>
+	csr_scatter_std(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail) const
+	{
+		return execute_csr_scatter<core::CSRScatterOperation::STD, float, B2, B3>(*this, head, tail);
+	}
+
 	template <std::integral... Is>
 	T1
 	item(
@@ -888,6 +953,35 @@ private:
 				core::cuda::operations::reduce<Kp>(out.__ptr, src.__ptr, N, M, keep_dims, keep_strides, reduce_dims, reduce_strides);
 			}
 		 #endif
+		else
+			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
+			}
+
+		return out;
+	}
+
+	template <core::CSRScatterOperation Kp, typename T2, Backend B2, Backend B3>
+	static auto
+	execute_csr_scatter(
+		const Tensor<T1, B1>&            src,
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail)
+	{
+		static_assert(B1 == B2 && B1 == B3, "Error: CSR Scatter operations cannot be performed on tensors with different Backends!");
+
+		Tensor<T2, B1> out(src.__shape);
+
+		if constexpr(B1 == Backend::CPU)
+			{
+				core::cpu::operations::csr_scatter<Kp, T1, T2>(out.__ptr, src.__ptr, head.__ptr, tail.__ptr, out.__shape[0], out.__shape.strides()[0]);
+			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				core::cuda::operations::csr_scatter<Kp, T1, T2>(out.__ptr, src.__ptr, head.__ptr, tail.__ptr, out.__shape[0], out.__shape.strides()[0]);
+			}
+		#endif
 		else
 			{
 				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");

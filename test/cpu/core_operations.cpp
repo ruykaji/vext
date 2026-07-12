@@ -9,6 +9,7 @@
 
 #include <vext/core/cpu/allocator.hpp>
 #include <vext/core/cpu/operations/elementwise_binary.hpp>
+#include <vext/core/cpu/operations/csr_scatter.hpp>
 #include <vext/core/cpu/operations/elementwise_logical.hpp>
 #include <vext/core/cpu/operations/elementwise_unary.hpp>
 #include <vext/core/cpu/operations/linear_algebra.hpp>
@@ -232,6 +233,59 @@ TEST(CoreCpuReduction, ReducesSelectedAxisUsingShapeMetadata)
 		std::vector<std::uint32_t>{ 1 });
 
 	expect_vector_near(out, { 6.0f, 15.0f });
+}
+
+TEST(CoreCpuCsrScatter, ComputesSegmentAggregates)
+{
+	const std::vector<float> src{
+		1.0f, 2.0f,
+		3.0f, 4.0f,
+		-2.0f, 5.0f,
+		4.0f, -1.0f
+	};
+	const std::vector<std::uint32_t> head{ 0, 2, 4, 4, 4 };
+	const std::vector<std::uint32_t> tail{ 0, 2, 1, 3 };
+
+	std::vector<float> out(8, 0.0f);
+
+	vext::core::cpu::operations::csr_scatter<vext::core::CSRScatterOperation::SUM>(out.data(), src.data(), head.data(), tail.data(), 4, 2);
+	expect_vector_near(out, { -1.0f, 7.0f, 7.0f, 3.0f, 0.0f, 0.0f, 0.0f, 0.0f });
+
+	std::fill(out.begin(), out.end(), 0.0f);
+	vext::core::cpu::operations::csr_scatter<vext::core::CSRScatterOperation::MEAN>(out.data(), src.data(), head.data(), tail.data(), 4, 2);
+	expect_vector_near(out, { -0.5f, 3.5f, 3.5f, 1.5f, 0.0f, 0.0f, 0.0f, 0.0f });
+
+	std::fill(out.begin(), out.end(), 0.0f);
+	vext::core::cpu::operations::csr_scatter<vext::core::CSRScatterOperation::MAX>(out.data(), src.data(), head.data(), tail.data(), 4, 2);
+	expect_vector_near(out, { 1.0f, 5.0f, 4.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f });
+
+	std::fill(out.begin(), out.end(), 0.0f);
+	vext::core::cpu::operations::csr_scatter<vext::core::CSRScatterOperation::VAR>(out.data(), src.data(), head.data(), tail.data(), 4, 2);
+	expect_vector_near(out, { 2.25f, 2.25f, 0.25f, 6.25f, 0.0f, 0.0f, 0.0f, 0.0f });
+
+	std::fill(out.begin(), out.end(), 0.0f);
+	vext::core::cpu::operations::csr_scatter<vext::core::CSRScatterOperation::STD>(out.data(), src.data(), head.data(), tail.data(), 4, 2);
+	expect_vector_near(out, { 1.5f, 1.5f, 0.5f, 2.5f, 0.0f, 0.0f, 0.0f, 0.0f });
+}
+
+TEST(CoreCpuCsrScatter, ComputesMinAndProductWhenOutputIsInitializedForTheOperation)
+{
+	const std::vector<float> src{
+		1.0f, 2.0f,
+		3.0f, 4.0f,
+		-2.0f, 5.0f,
+		4.0f, -1.0f
+	};
+	const std::vector<std::uint32_t> head{ 0, 2, 4, 4, 4 };
+	const std::vector<std::uint32_t> tail{ 0, 2, 1, 3 };
+
+	std::vector<float> min_out(8, std::numeric_limits<float>::max());
+	vext::core::cpu::operations::csr_scatter<vext::core::CSRScatterOperation::MIN>(min_out.data(), src.data(), head.data(), tail.data(), 4, 2);
+	expect_vector_near(min_out, { -2.0f, 2.0f, 3.0f, -1.0f, std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() });
+
+	std::vector<float> prod_out(8, 1.0f);
+	vext::core::cpu::operations::csr_scatter<vext::core::CSRScatterOperation::PROD>(prod_out.data(), src.data(), head.data(), tail.data(), 4, 2);
+	expect_vector_near(prod_out, { -2.0f, 10.0f, 12.0f, -4.0f, 1.0f, 1.0f, 1.0f, 1.0f });
 }
 
 TEST(CoreCpuLinearAlgebra, ComputesMatrixProduct)

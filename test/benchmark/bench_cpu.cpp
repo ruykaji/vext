@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include <vext/core/cpu/allocator.hpp>
+#include <vext/core/cpu/operations/csr_scatter.hpp>
 #include <vext/core/cpu/operations/elementwise_binary.hpp>
 #include <vext/core/cpu/operations/elementwise_logical.hpp>
 #include <vext/core/cpu/operations/elementwise_unary.hpp>
@@ -20,6 +22,9 @@ namespace
 constexpr std::uint32_t ELEMENT_COUNT         = 1U << 24U;
 constexpr std::uint32_t INPLACE_ELEMENT_COUNT = 1U << 20U;
 constexpr std::uint32_t MATRIX_SIZE           = 512U;
+constexpr std::uint32_t CSR_ROWS              = 1U << 20U;
+constexpr std::uint32_t CSR_FEATURES          = 64U;
+constexpr std::uint32_t CSR_DEGREE            = 32U;
 constexpr std::int32_t  ELEMENT_ITERS         = 16;
 constexpr std::int32_t  MATMUL_ITERS          = 16;
 
@@ -497,6 +502,143 @@ BM_CpuReductionTensor(
 	vext::core::cpu::allocator::free();
 }
 
+std::vector<std::uint32_t>
+make_csr_head(
+	const std::uint32_t rows,
+	const std::uint32_t degree)
+{
+	std::vector<std::uint32_t> head(rows + 1U, 0U);
+
+	for(std::uint32_t row = 0; row <= rows; ++row)
+		{
+			head[row] = row * degree;
+		}
+
+	return head;
+}
+
+std::vector<std::uint32_t>
+make_csr_tail(
+	const std::uint32_t rows,
+	const std::uint32_t degree)
+{
+	std::vector<std::uint32_t> tail(rows * degree, 0U);
+
+	for(std::uint32_t row = 0; row < rows; ++row)
+		{
+			for(std::uint32_t edge = 0; edge < degree; ++edge)
+				{
+					tail[row * degree + edge] = (row + edge) % rows;
+				}
+		}
+
+	return tail;
+}
+
+template <vext::core::CSRScatterOperation Kp>
+void
+BM_CpuCsrScatterKernel(
+	benchmark::State& state)
+{
+	const std::uint32_t rows     = static_cast<std::uint32_t>(state.range(0));
+	const std::uint32_t features = static_cast<std::uint32_t>(state.range(1));
+	const std::uint32_t degree   = static_cast<std::uint32_t>(state.range(2));
+	const std::uint32_t size     = rows * features;
+
+	std::vector<float>         src(size, 1.25f);
+	std::vector<float>         out(size, 0.0f);
+	std::vector<std::uint32_t> head = make_csr_head(rows, degree);
+	std::vector<std::uint32_t> tail = make_csr_tail(rows, degree);
+
+	for([[maybe_unused]] auto iteration : state)
+		{
+			if constexpr(Kp == vext::core::CSRScatterOperation::MIN)
+				{
+					std::fill(out.begin(), out.end(), std::numeric_limits<float>::max());
+				}
+			else if constexpr(Kp == vext::core::CSRScatterOperation::PROD)
+				{
+					std::fill(out.begin(), out.end(), 1.0f);
+				}
+			else
+				{
+					std::fill(out.begin(), out.end(), 0.0f);
+				}
+
+			vext::core::cpu::operations::csr_scatter<Kp>(out.data(), src.data(), head.data(), tail.data(), rows, features);
+			benchmark::DoNotOptimize(out.data());
+			benchmark::ClobberMemory();
+		}
+
+	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * rows * degree * features));
+	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * rows * degree * features * sizeof(float)));
+}
+
+template <vext::core::CSRScatterOperation Kp>
+void
+BM_CpuCsrScatterTensor(
+	benchmark::State& state)
+{
+	{
+		const std::uint32_t rows     = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t features = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t degree   = static_cast<std::uint32_t>(state.range(2));
+		const std::uint32_t size     = rows * features;
+
+		vext::Tensor<float>         src(rows, features);
+		vext::Tensor<std::uint32_t> head(rows + 1U);
+		vext::Tensor<std::uint32_t> tail(rows * degree);
+
+		src.set_from(std::vector<float>(size, 1.25f));
+		head.set_from(make_csr_head(rows, degree));
+		tail.set_from(make_csr_tail(rows, degree));
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				if constexpr(Kp == vext::core::CSRScatterOperation::SUM)
+					{
+						const vext::Tensor<float> out = src.csr_scatter_sum(head, tail);
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRScatterOperation::MEAN)
+					{
+						const vext::Tensor<float> out = src.csr_scatter_mean(head, tail);
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRScatterOperation::MAX)
+					{
+						const vext::Tensor<float> out = src.csr_scatter_max(head, tail);
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRScatterOperation::MIN)
+					{
+						const vext::Tensor<float> out = src.csr_scatter_min(head, tail);
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRScatterOperation::PROD)
+					{
+						const vext::Tensor<float> out = src.csr_scatter_prod(head, tail);
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRScatterOperation::STD)
+					{
+						const vext::Tensor<float> out = src.csr_scatter_std(head, tail);
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRScatterOperation::VAR)
+					{
+						const vext::Tensor<float> out = src.csr_scatter_var(head, tail);
+						observe_tensor(out);
+					}
+			}
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * rows * degree * features));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * rows * degree * features * sizeof(float)));
+	}
+
+	vext::core::cpu::allocator::free();
+}
+
 void
 BM_CpuMatmulKernel(
 	benchmark::State& state)
@@ -743,6 +885,21 @@ BENCHMARK_TEMPLATE(BM_CpuReductionKernel, vext::core::ReductionOperation::STD)->
 BENCHMARK_TEMPLATE(BM_CpuReductionTensor, vext::core::ReductionOperation::STD)->Name("BM_CpuReductionTensor/STD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
 BENCHMARK_TEMPLATE(BM_CpuReductionKernel, vext::core::ReductionOperation::VAR)->Name("BM_CpuReductionKernel/VAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
 BENCHMARK_TEMPLATE(BM_CpuReductionTensor, vext::core::ReductionOperation::VAR)->Name("BM_CpuReductionTensor/VAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS);
+
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterKernel, vext::core::CSRScatterOperation::SUM)->Name("BM_CpuCsrScatterKernel/SUM")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterTensor, vext::core::CSRScatterOperation::SUM)->Name("BM_CpuCsrScatterTensor/SUM")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterKernel, vext::core::CSRScatterOperation::MEAN)->Name("BM_CpuCsrScatterKernel/MEAN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterTensor, vext::core::CSRScatterOperation::MEAN)->Name("BM_CpuCsrScatterTensor/MEAN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterKernel, vext::core::CSRScatterOperation::MAX)->Name("BM_CpuCsrScatterKernel/MAX")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterTensor, vext::core::CSRScatterOperation::MAX)->Name("BM_CpuCsrScatterTensor/MAX")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterKernel, vext::core::CSRScatterOperation::MIN)->Name("BM_CpuCsrScatterKernel/MIN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterTensor, vext::core::CSRScatterOperation::MIN)->Name("BM_CpuCsrScatterTensor/MIN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterKernel, vext::core::CSRScatterOperation::PROD)->Name("BM_CpuCsrScatterKernel/PROD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterTensor, vext::core::CSRScatterOperation::PROD)->Name("BM_CpuCsrScatterTensor/PROD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterKernel, vext::core::CSRScatterOperation::STD)->Name("BM_CpuCsrScatterKernel/STD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterTensor, vext::core::CSRScatterOperation::STD)->Name("BM_CpuCsrScatterTensor/STD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterKernel, vext::core::CSRScatterOperation::VAR)->Name("BM_CpuCsrScatterKernel/VAR")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
+BENCHMARK_TEMPLATE(BM_CpuCsrScatterTensor, vext::core::CSRScatterOperation::VAR)->Name("BM_CpuCsrScatterTensor/VAR")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS);
 
 BENCHMARK(BM_CpuMatmulKernel)->Args({ MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE })->Iterations(MATMUL_ITERS);
 BENCHMARK(BM_CpuTensorMatmul)->Args({ MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE })->Iterations(MATMUL_ITERS);

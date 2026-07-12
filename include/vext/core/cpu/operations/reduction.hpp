@@ -107,10 +107,10 @@ reduce(
 
 					for(std::uint32_t j = 0; j < M; ++j)
 						{
-							dispersion += std::pow(src[keep_offset + reduce_offset] - mean, 2.0f);
+							const float diff = src[keep_offset + reduce_offset] - mean;
+							dispersion += diff * diff;
 
 							for(std::uint32_t k = reduce_size - 1;; --k)
-
 								{
 									++reduce_coords[k];
 

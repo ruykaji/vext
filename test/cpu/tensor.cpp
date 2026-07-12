@@ -425,6 +425,47 @@ TEST(TensorCpu, ReductionsRejectInvalidAxes)
 	EXPECT_THROW((void)tensor.sum(-1), std::runtime_error);
 }
 
+TEST(TensorCpu, CsrScatterAggregatesNeighborRows)
+{
+	const vext::Tensor<float>         src({ { 1.0f, 2.0f }, { 3.0f, 4.0f }, { -2.0f, 5.0f }, { 4.0f, -1.0f } });
+	const vext::Tensor<std::uint32_t> head({ 0U, 2U, 4U, 4U, 4U });
+	const vext::Tensor<std::uint32_t> tail({ 0U, 2U, 1U, 3U });
+
+	const vext::Tensor<float> sum      = src.csr_scatter_sum(head, tail);
+	const vext::Tensor<float> mean     = src.csr_scatter_mean(head, tail);
+	const vext::Tensor<float> maximum  = src.csr_scatter_max(head, tail);
+	const vext::Tensor<float> variance = src.csr_scatter_var(head, tail);
+	const vext::Tensor<float> stddev   = src.csr_scatter_std(head, tail);
+
+	expect_shape_eq(sum.shape(), { 4, 2 });
+	expect_shape_eq(mean.shape(), { 4, 2 });
+	expect_shape_eq(maximum.shape(), { 4, 2 });
+	expect_shape_eq(variance.shape(), { 4, 2 });
+	expect_shape_eq(stddev.shape(), { 4, 2 });
+
+	expect_tensor_near(sum, { -1.0f, 7.0f, 7.0f, 3.0f, 0.0f, 0.0f, 0.0f, 0.0f });
+	expect_tensor_near(mean, { -0.5f, 3.5f, 3.5f, 1.5f, 0.0f, 0.0f, 0.0f, 0.0f });
+	expect_tensor_near(maximum, { 1.0f, 5.0f, 4.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f });
+	expect_tensor_near(variance, { 2.25f, 2.25f, 0.25f, 6.25f, 0.0f, 0.0f, 0.0f, 0.0f });
+	expect_tensor_near(stddev, { 1.5f, 1.5f, 0.5f, 2.5f, 0.0f, 0.0f, 0.0f, 0.0f });
+}
+
+TEST(TensorCpu, CsrScatterMinAndProdUseOperationIdentity)
+{
+	const vext::Tensor<float>         src({ { 1.0f, 2.0f }, { 3.0f, 4.0f }, { -2.0f, 5.0f }, { 4.0f, -1.0f } });
+	const vext::Tensor<std::uint32_t> head({ 0U, 2U, 4U, 4U, 4U });
+	const vext::Tensor<std::uint32_t> tail({ 0U, 2U, 1U, 3U });
+
+	const vext::Tensor<float> minimum = src.csr_scatter_min(head, tail);
+	const vext::Tensor<float> product = src.csr_scatter_prod(head, tail);
+
+	expect_shape_eq(minimum.shape(), { 4, 2 });
+	expect_shape_eq(product.shape(), { 4, 2 });
+
+	expect_tensor_near(minimum, { -2.0f, 2.0f, 3.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f });
+	expect_tensor_near(product, { -2.0f, 10.0f, 12.0f, -4.0f, 0.0f, 0.0f, 0.0f, 0.0f });
+}
+
 TEST(TensorCpu, MatmulComputesMatrixProduct)
 {
 	const vext::Tensor<float> lhs({ { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } });
