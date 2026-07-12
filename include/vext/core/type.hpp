@@ -88,6 +88,17 @@ enum class CSRScatterOperation : std::uint8_t
 	VAR
 };
 
+enum class CSRSpMVOperation : std::uint8_t
+{
+	SUM = 0,
+	MEAN,
+	MAX,
+	MIN,
+	PROD,
+	STD,
+	VAR
+};
+
 }
 
 #endif

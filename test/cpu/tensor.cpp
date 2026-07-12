@@ -466,6 +466,38 @@ TEST(TensorCpu, CsrScatterMinAndProdUseOperationIdentity)
 	expect_tensor_near(product, { -2.0f, 10.0f, 12.0f, -4.0f, 0.0f, 0.0f, 0.0f, 0.0f });
 }
 
+TEST(TensorCpu, CsrSpmvAggregatesSparseMatrixVectorProducts)
+{
+	const vext::Tensor<float>         values({ 1.0f, 2.0f, 3.0f, 4.0f, -2.0f, 5.0f });
+	const vext::Tensor<std::uint32_t> head({ 0U, 2U, 4U, 6U });
+	const vext::Tensor<std::uint32_t> tail({ 0U, 2U, 1U, 3U, 0U, 1U });
+	const vext::Tensor<float>         x({ 2.0f, -1.0f, 3.0f, 4.0f });
+
+	const vext::Tensor<float> sum      = values.csr_spmv_sum(head, tail, x);
+	const vext::Tensor<float> mean     = values.csr_spmv_mean(head, tail, x);
+	const vext::Tensor<float> minimum  = values.csr_spmv_min(head, tail, x);
+	const vext::Tensor<float> maximum  = values.csr_spmv_max(head, tail, x);
+	const vext::Tensor<float> product  = values.csr_spmv_prod(head, tail, x);
+	const vext::Tensor<float> variance = values.csr_spmv_var(head, tail, x);
+	const vext::Tensor<float> stddev   = values.csr_spmv_std(head, tail, x);
+
+	expect_shape_eq(sum.shape(), { 3 });
+	expect_shape_eq(mean.shape(), { 3 });
+	expect_shape_eq(minimum.shape(), { 3 });
+	expect_shape_eq(maximum.shape(), { 3 });
+	expect_shape_eq(product.shape(), { 3 });
+	expect_shape_eq(variance.shape(), { 3 });
+	expect_shape_eq(stddev.shape(), { 3 });
+
+	expect_tensor_near(sum, { 8.0f, 13.0f, -9.0f });
+	expect_tensor_near(mean, { 4.0f, 6.5f, -4.5f });
+	expect_tensor_near(minimum, { 2.0f, -3.0f, -5.0f });
+	expect_tensor_near(maximum, { 6.0f, 16.0f, -4.0f });
+	expect_tensor_near(product, { 12.0f, -48.0f, 20.0f });
+	expect_tensor_near(variance, { 4.0f, 90.25f, 0.25f });
+	expect_tensor_near(stddev, { 2.0f, 9.5f, 0.5f });
+}
+
 TEST(TensorCpu, MatmulComputesMatrixProduct)
 {
 	const vext::Tensor<float> lhs({ { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } });

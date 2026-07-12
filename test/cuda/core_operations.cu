@@ -9,6 +9,7 @@
 
 #include <vext/core/cuda/allocator.cuh>
 #include <vext/core/cuda/operations/csr_scatter.cuh>
+#include <vext/core/cuda/operations/csr_spmv.cuh>
 #include <vext/core/cuda/operations/elementwise_binary.cuh>
 #include <vext/core/cuda/operations/elementwise_logical.cuh>
 #include <vext/core/cuda/operations/elementwise_unary.cuh>
@@ -265,6 +266,60 @@ TEST(CoreCudaCsrScatter, ComputesMinAndProductWhenOutputIsInitializedForTheOpera
 	vext::core::cuda::allocator::deallocate(tail);
 	vext::core::cuda::allocator::deallocate(min_out);
 	vext::core::cuda::allocator::deallocate(prod_out);
+	vext::core::cuda::allocator::free();
+}
+
+TEST(CoreCudaCsrSpmv, ComputesSparseMatrixVectorAggregates)
+{
+	if(!has_cuda_device())
+		{
+			GTEST_SKIP() << "No CUDA-capable device is available";
+		}
+
+	const std::vector<float>         values_host{ 1.0f, 2.0f, 3.0f, 4.0f, -2.0f, 5.0f };
+	const std::vector<std::uint32_t> head_host{ 0, 2, 4, 6 };
+	const std::vector<std::uint32_t> tail_host{ 0, 2, 1, 3, 0, 1 };
+	const std::vector<float>         x_host{ 2.0f, -1.0f, 3.0f, 4.0f };
+
+	float*         values = copy_to_device(values_host);
+	std::uint32_t* head   = copy_to_device(head_host);
+	std::uint32_t* tail   = copy_to_device(tail_host);
+	float*         x      = copy_to_device(x_host);
+	float*         out    = vext::core::cuda::allocator::allocate<float>(3);
+
+	vext::core::cuda::operations::csr_spmv<vext::core::CSRSpMVOperation::SUM>(out, values, head, tail, x, 3);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 3), { 8.0f, 13.0f, -9.0f });
+
+	vext::core::cuda::operations::csr_spmv<vext::core::CSRSpMVOperation::MEAN>(out, values, head, tail, x, 3);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 3), { 4.0f, 6.5f, -4.5f });
+
+	vext::core::cuda::operations::csr_spmv<vext::core::CSRSpMVOperation::MIN>(out, values, head, tail, x, 3);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 3), { 2.0f, -3.0f, -5.0f });
+
+	vext::core::cuda::operations::csr_spmv<vext::core::CSRSpMVOperation::MAX>(out, values, head, tail, x, 3);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 3), { 6.0f, 16.0f, -4.0f });
+
+	vext::core::cuda::operations::csr_spmv<vext::core::CSRSpMVOperation::PROD>(out, values, head, tail, x, 3);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 3), { 12.0f, -48.0f, 20.0f });
+
+	vext::core::cuda::operations::csr_spmv<vext::core::CSRSpMVOperation::VAR>(out, values, head, tail, x, 3);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 3), { 4.0f, 90.25f, 0.25f });
+
+	vext::core::cuda::operations::csr_spmv<vext::core::CSRSpMVOperation::STD>(out, values, head, tail, x, 3);
+	check_cuda(cudaDeviceSynchronize());
+	expect_near(copy_to_host(out, 3), { 2.0f, 9.5f, 0.5f });
+
+	vext::core::cuda::allocator::deallocate(values);
+	vext::core::cuda::allocator::deallocate(head);
+	vext::core::cuda::allocator::deallocate(tail);
+	vext::core::cuda::allocator::deallocate(x);
+	vext::core::cuda::allocator::deallocate(out);
 	vext::core::cuda::allocator::free();
 }
 

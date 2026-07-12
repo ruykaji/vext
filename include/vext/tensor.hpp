@@ -11,6 +11,7 @@
 
 #include <vext/core/cpu/allocator.hpp>
 #include <vext/core/cpu/operations/csr_scatter.hpp>
+#include <vext/core/cpu/operations/csr_spmv.hpp>
 #include <vext/core/cpu/operations/elementwise_binary.hpp>
 #include <vext/core/cpu/operations/elementwise_logical.hpp>
 #include <vext/core/cpu/operations/elementwise_unary.hpp>
@@ -21,6 +22,7 @@
 #if VEXT_CUDA
 #include <vext/core/cuda/allocator.cuh>
 #include <vext/core/cuda/operations/csr_scatter.cuh>
+#include <vext/core/cuda/operations/csr_spmv.cuh>
 #include <vext/core/cuda/operations/elementwise_binary.cuh>
 #include <vext/core/cuda/operations/elementwise_logical.cuh>
 #include <vext/core/cuda/operations/elementwise_unary.cuh>
@@ -704,6 +706,76 @@ public:
 		return execute_csr_scatter<core::CSRScatterOperation::STD, float, B2, B3>(*this, head, tail);
 	}
 
+	template <typename T2, Backend B2, Backend B3, Backend B4>
+	Tensor<T1, B1>
+	csr_spmv_sum(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail,
+		const Tensor<T2, B4>&            x) const
+	{
+		return execute_csr_spmv<core::CSRSpMVOperation::SUM, T1, T2, B2, B3, B4>(*this, head, tail, x);
+	}
+
+	template <typename T2, Backend B2, Backend B3, Backend B4>
+	Tensor<float, B1>
+	csr_spmv_mean(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail,
+		const Tensor<T2, B4>&            x) const
+	{
+		return execute_csr_spmv<core::CSRSpMVOperation::MEAN, float, T2, B2, B3, B4>(*this, head, tail, x);
+	}
+
+	template <typename T2, Backend B2, Backend B3, Backend B4>
+	Tensor<T1, B1>
+	csr_spmv_min(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail,
+		const Tensor<T2, B4>&            x) const
+	{
+		return execute_csr_spmv<core::CSRSpMVOperation::MIN, T1, T2, B2, B3, B4>(*this, head, tail, x);
+	}
+
+	template <typename T2, Backend B2, Backend B3, Backend B4>
+	Tensor<T1, B1>
+	csr_spmv_max(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail,
+		const Tensor<T2, B4>&            x) const
+	{
+		return execute_csr_spmv<core::CSRSpMVOperation::MAX, T1, T2, B2, B3, B4>(*this, head, tail, x);
+	}
+
+	template <typename T2, Backend B2, Backend B3, Backend B4>
+	Tensor<T1, B1>
+	csr_spmv_prod(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail,
+		const Tensor<T2, B4>&            x) const
+	{
+		return execute_csr_spmv<core::CSRSpMVOperation::PROD, T1, T2, B2, B3, B4>(*this, head, tail, x);
+	}
+
+	template <typename T2, Backend B2, Backend B3, Backend B4>
+	Tensor<float, B1>
+	csr_spmv_var(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail,
+		const Tensor<T2, B4>&            x) const
+	{
+		return execute_csr_spmv<core::CSRSpMVOperation::VAR, float, T2, B2, B3, B4>(*this, head, tail, x);
+	}
+
+	template <typename T2, Backend B2, Backend B3, Backend B4>
+	Tensor<float, B1>
+	csr_spmv_std(
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail,
+		const Tensor<T2, B4>&            x) const
+	{
+		return execute_csr_spmv<core::CSRSpMVOperation::STD, float, T2, B2, B3, B4>(*this, head, tail, x);
+	}
+
 	template <std::integral... Is>
 	T1
 	item(
@@ -970,6 +1042,11 @@ private:
 	{
 		static_assert(B1 == B2 && B1 == B3, "Error: CSR Scatter operations cannot be performed on tensors with different Backends!");
 
+		if(src.__shape[0] != (head.__shape[0] - 1))
+			{
+				throw std::runtime_error("Cannot perform CSR Scatter operation on incompatible shapes");
+			}
+
 		Tensor<T2, B1> out(src.__shape);
 
 		if constexpr(B1 == Backend::CPU)
@@ -980,6 +1057,36 @@ private:
 		else if constexpr(B1 == Backend::CUDA)
 			{
 				core::cuda::operations::csr_scatter<Kp, T1, T2>(out.__ptr, src.__ptr, head.__ptr, tail.__ptr, out.__shape[0], out.__shape.strides()[0]);
+			}
+		#endif
+		else
+			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
+			}
+
+		return out;
+	}
+
+	template <core::CSRSpMVOperation Kp, typename T2, typename T3, Backend B2, Backend B3, Backend B4>
+	static auto
+	execute_csr_spmv(
+		const Tensor<T1, B1>&            A,
+		const Tensor<std::uint32_t, B2>& head,
+		const Tensor<std::uint32_t, B3>& tail,
+		const Tensor<T3, B4>&            x)
+	{
+		static_assert(B1 == B2 && B1 == B3 && B1 == B4, "Error: CSR Scatter operations cannot be performed on tensors with different Backends!");
+
+		Tensor<T2, B1> out(x.__shape[0] - 1);
+
+		if constexpr(B1 == Backend::CPU)
+			{
+				core::cpu::operations::csr_spmv<Kp, T2, T1, T3>(out.__ptr, A.__ptr, head.__ptr, tail.__ptr, x.__ptr, out.__shape.length());
+			}
+		#if VEXT_CUDA
+		else if constexpr(B1 == Backend::CUDA)
+			{
+				core::cuda::operations::csr_spmv<Kp, T2, T1, T3>(out.__ptr, A.__ptr, head.__ptr, tail.__ptr, x.__ptr, out.__shape.length());
 			}
 		#endif
 		else

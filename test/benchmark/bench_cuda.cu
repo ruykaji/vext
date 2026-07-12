@@ -8,6 +8,7 @@
 
 #include <vext/core/cuda/allocator.cuh>
 #include <vext/core/cuda/operations/csr_scatter.cuh>
+#include <vext/core/cuda/operations/csr_spmv.cuh>
 #include <vext/core/cuda/operations/elementwise_binary.cuh>
 #include <vext/core/cuda/operations/elementwise_logical.cuh>
 #include <vext/core/cuda/operations/elementwise_unary.cuh>
@@ -891,6 +892,133 @@ BM_CudaCsrScatterTensor(
 	vext::core::cuda::allocator::free();
 }
 
+template <vext::core::CSRSpMVOperation Kp>
+void
+BM_CudaCsrSpmvKernel(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	const std::uint32_t rows   = static_cast<std::uint32_t>(state.range(0));
+	const std::uint32_t degree = static_cast<std::uint32_t>(state.range(1));
+	const std::uint32_t nnz    = rows * degree;
+
+	float*         values = copy_to_device(std::vector<float>(nnz, 1.25f));
+	float*         x      = copy_to_device(std::vector<float>(rows, 2.0f));
+	float*         out    = vext::core::cuda::allocator::allocate<float>(rows);
+	std::uint32_t* head   = copy_to_device(make_csr_head(rows, degree));
+	std::uint32_t* tail   = copy_to_device(make_csr_tail(rows, degree));
+
+	const CudaEventTimer timer;
+
+	for([[maybe_unused]] auto iteration : state)
+		{
+			timer.start();
+			vext::core::cuda::operations::csr_spmv<Kp>(out, values, head, tail, x, rows);
+			state.SetIterationTime(timer.stop_seconds());
+			benchmark::DoNotOptimize(out);
+		}
+
+	cudaDeviceSynchronize();
+
+	state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * nnz));
+	state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * nnz * (sizeof(float) * 2 + sizeof(std::uint32_t))));
+
+	vext::core::cuda::allocator::deallocate(values);
+	vext::core::cuda::allocator::deallocate(x);
+	vext::core::cuda::allocator::deallocate(out);
+	vext::core::cuda::allocator::deallocate(head);
+	vext::core::cuda::allocator::deallocate(tail);
+	vext::core::cuda::allocator::free();
+}
+
+template <vext::core::CSRSpMVOperation Kp>
+void
+BM_CudaCsrSpmvTensor(
+	benchmark::State& state)
+{
+	if(skip_without_cuda_device(state))
+		{
+			return;
+		}
+
+	{
+		const std::uint32_t rows   = static_cast<std::uint32_t>(state.range(0));
+		const std::uint32_t degree = static_cast<std::uint32_t>(state.range(1));
+		const std::uint32_t nnz    = rows * degree;
+
+		vext::Tensor<float, vext::Backend::CUDA>         values(nnz);
+		vext::Tensor<std::uint32_t, vext::Backend::CUDA> head(rows + 1U);
+		vext::Tensor<std::uint32_t, vext::Backend::CUDA> tail(nnz);
+		vext::Tensor<float, vext::Backend::CUDA>         x(rows);
+
+		values.set_from(std::vector<float>(nnz, 1.25f));
+		head.set_from(make_csr_head(rows, degree));
+		tail.set_from(make_csr_tail(rows, degree));
+		x.set_from(std::vector<float>(rows, 2.0f));
+
+		const CudaEventTimer timer;
+
+		for([[maybe_unused]] auto iteration : state)
+			{
+				timer.start();
+
+				if constexpr(Kp == vext::core::CSRSpMVOperation::SUM)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_sum(head, tail, x);
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRSpMVOperation::MEAN)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_mean(head, tail, x);
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRSpMVOperation::MAX)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_max(head, tail, x);
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRSpMVOperation::MIN)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_min(head, tail, x);
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRSpMVOperation::PROD)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_prod(head, tail, x);
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRSpMVOperation::STD)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_std(head, tail, x);
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+				else if constexpr(Kp == vext::core::CSRSpMVOperation::VAR)
+					{
+						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_var(head, tail, x);
+						state.SetIterationTime(timer.stop_seconds());
+						observe_tensor(out);
+					}
+			}
+
+		cudaDeviceSynchronize();
+
+		state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * nnz));
+		state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * nnz * (sizeof(float) * 2 + sizeof(std::uint32_t))));
+	}
+
+	vext::core::cuda::allocator::free();
+}
+
 void
 BM_CudaMatmulKernel(
 	benchmark::State& state)
@@ -1186,6 +1314,21 @@ BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::core::CSRScatterOperation::STD
 BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::core::CSRScatterOperation::STD)->Name("BM_CudaCsrScatterTensor/STD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
 BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::core::CSRScatterOperation::VAR)->Name("BM_CudaCsrScatterKernel/VAR")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
 BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::core::CSRScatterOperation::VAR)->Name("BM_CudaCsrScatterTensor/VAR")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOperation::SUM)->Name("BM_CudaCsrSpmvKernel/SUM")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOperation::SUM)->Name("BM_CudaCsrSpmvTensor/SUM")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOperation::MEAN)->Name("BM_CudaCsrSpmvKernel/MEAN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOperation::MEAN)->Name("BM_CudaCsrSpmvTensor/MEAN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOperation::MAX)->Name("BM_CudaCsrSpmvKernel/MAX")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOperation::MAX)->Name("BM_CudaCsrSpmvTensor/MAX")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOperation::MIN)->Name("BM_CudaCsrSpmvKernel/MIN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOperation::MIN)->Name("BM_CudaCsrSpmvTensor/MIN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOperation::PROD)->Name("BM_CudaCsrSpmvKernel/PROD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOperation::PROD)->Name("BM_CudaCsrSpmvTensor/PROD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOperation::STD)->Name("BM_CudaCsrSpmvKernel/STD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOperation::STD)->Name("BM_CudaCsrSpmvTensor/STD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOperation::VAR)->Name("BM_CudaCsrSpmvKernel/VAR")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOperation::VAR)->Name("BM_CudaCsrSpmvTensor/VAR")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
 
 BENCHMARK(BM_CudaMatmulKernel)->Args({ MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE })->Iterations(MATMUL_ITERS)->UseManualTime();
 BENCHMARK(BM_CudaTensorMatmul)->Args({ MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE })->Iterations(MATMUL_ITERS)->UseManualTime();

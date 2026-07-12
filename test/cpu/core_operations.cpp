@@ -10,6 +10,7 @@
 #include <vext/core/cpu/allocator.hpp>
 #include <vext/core/cpu/operations/elementwise_binary.hpp>
 #include <vext/core/cpu/operations/csr_scatter.hpp>
+#include <vext/core/cpu/operations/csr_spmv.hpp>
 #include <vext/core/cpu/operations/elementwise_logical.hpp>
 #include <vext/core/cpu/operations/elementwise_unary.hpp>
 #include <vext/core/cpu/operations/linear_algebra.hpp>
@@ -286,6 +287,37 @@ TEST(CoreCpuCsrScatter, ComputesMinAndProductWhenOutputIsInitializedForTheOperat
 	std::vector<float> prod_out(8, 1.0f);
 	vext::core::cpu::operations::csr_scatter<vext::core::CSRScatterOperation::PROD>(prod_out.data(), src.data(), head.data(), tail.data(), 4, 2);
 	expect_vector_near(prod_out, { -2.0f, 10.0f, 12.0f, -4.0f, 1.0f, 1.0f, 1.0f, 1.0f });
+}
+
+TEST(CoreCpuCsrSpmv, ComputesSparseMatrixVectorAggregates)
+{
+	const std::vector<float>         values{ 1.0f, 2.0f, 3.0f, 4.0f, -2.0f, 5.0f };
+	const std::vector<std::uint32_t> head{ 0, 2, 4, 6 };
+	const std::vector<std::uint32_t> tail{ 0, 2, 1, 3, 0, 1 };
+	const std::vector<float>         x{ 2.0f, -1.0f, 3.0f, 4.0f };
+
+	std::vector<float> out(3, 0.0f);
+
+	vext::core::cpu::operations::csr_spmv<vext::core::CSRSpMVOperation::SUM>(out.data(), values.data(), head.data(), tail.data(), x.data(), 3);
+	expect_vector_near(out, { 8.0f, 13.0f, -9.0f });
+
+	vext::core::cpu::operations::csr_spmv<vext::core::CSRSpMVOperation::MEAN>(out.data(), values.data(), head.data(), tail.data(), x.data(), 3);
+	expect_vector_near(out, { 4.0f, 6.5f, -4.5f });
+
+	vext::core::cpu::operations::csr_spmv<vext::core::CSRSpMVOperation::MIN>(out.data(), values.data(), head.data(), tail.data(), x.data(), 3);
+	expect_vector_near(out, { 2.0f, -3.0f, -5.0f });
+
+	vext::core::cpu::operations::csr_spmv<vext::core::CSRSpMVOperation::MAX>(out.data(), values.data(), head.data(), tail.data(), x.data(), 3);
+	expect_vector_near(out, { 6.0f, 16.0f, -4.0f });
+
+	vext::core::cpu::operations::csr_spmv<vext::core::CSRSpMVOperation::PROD>(out.data(), values.data(), head.data(), tail.data(), x.data(), 3);
+	expect_vector_near(out, { 12.0f, -48.0f, 20.0f });
+
+	vext::core::cpu::operations::csr_spmv<vext::core::CSRSpMVOperation::VAR>(out.data(), values.data(), head.data(), tail.data(), x.data(), 3);
+	expect_vector_near(out, { 4.0f, 90.25f, 0.25f });
+
+	vext::core::cpu::operations::csr_spmv<vext::core::CSRSpMVOperation::STD>(out.data(), values.data(), head.data(), tail.data(), x.data(), 3);
+	expect_vector_near(out, { 2.0f, 9.5f, 0.5f });
 }
 
 TEST(CoreCpuLinearAlgebra, ComputesMatrixProduct)
