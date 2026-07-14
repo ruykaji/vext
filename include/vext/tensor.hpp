@@ -124,7 +124,14 @@ public:
 					}
 			}
 
-		__dims = std::move(dims);
+		if(dims.empty() && data.size() == 1)
+			{
+				__dims = { 1 };
+			}
+		else
+			{
+				__dims = std::move(dims);
+			}
 
 		compute_shape();
 		allocate<Backend::CPU>(data.data());
@@ -480,7 +487,7 @@ public:
 				remainder.emplace_back(1);
 			}
 
-		Tensor<std::common_type_t<T1, T2>, B1> out( remainder);
+		Tensor<std::common_type_t<T1, T2>, B1> out(remainder);
 
 		if constexpr(B1 == Backend::CPU)
 			{
@@ -694,7 +701,7 @@ public:
 		return execute_reduction<core::ReductionOperation::STD, float>(*this, axis...);
 	}
 
-    template <std::integral... Is>
+	template <std::integral... Is>
 	Tensor<float, B1>
 	l2_norm(
 		Is... axis) const
