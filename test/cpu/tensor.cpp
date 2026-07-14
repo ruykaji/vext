@@ -14,10 +14,10 @@ namespace
 
 void
 expect_shape_eq(
-	const vext::Shape&                         shape,
+	const std::vector<std::uint32_t>&          shape,
 	const std::initializer_list<std::uint32_t> expected)
 {
-	ASSERT_EQ(shape.dims(), std::vector<std::uint32_t>(expected));
+	ASSERT_EQ(shape, std::vector<std::uint32_t>(expected));
 	ASSERT_EQ(shape.size(), expected.size());
 }
 
@@ -27,7 +27,7 @@ expect_tensor_values(
 	const vext::Tensor<Tp, vext::Backend::CPU>& tensor,
 	const std::initializer_list<Up>             expected)
 {
-	ASSERT_EQ(tensor.shape().length(), expected.size());
+	ASSERT_EQ(tensor.length(), expected.size());
 
 	std::uint32_t i = 0;
 
@@ -45,7 +45,7 @@ expect_tensor_near(
 	const std::initializer_list<Up>             expected,
 	const float                                 tolerance = 1e-5f)
 {
-	ASSERT_EQ(tensor.shape().length(), expected.size());
+	ASSERT_EQ(tensor.length(), expected.size());
 
 	std::uint32_t i = 0;
 
@@ -93,14 +93,6 @@ TEST(TensorCpu, ConstructsFromInitializerList)
 
 	expect_shape_eq(tensor.shape(), { 2, 3 });
 	expect_tensor_values(tensor, { 1, 2, 3, 4, 5, 6 });
-}
-
-TEST(TensorCpu, ConstructsFromShape)
-{
-	const vext::Tensor<float> tensor(vext::Shape(2, 2));
-
-	expect_shape_eq(tensor.shape(), { 2, 2 });
-	expect_tensor_near(tensor, { 0.0f, 0.0f, 0.0f, 0.0f });
 }
 
 TEST(TensorCpu, InitializerListRejectsInconsistentShape)

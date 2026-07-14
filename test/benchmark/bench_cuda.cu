@@ -136,7 +136,7 @@ VEXT_BENCHMARK_NOINLINE void
 observe_tensor(
 	const vext::Tensor<Tp, vext::Backend::CUDA>& tensor)
 {
-	benchmark::DoNotOptimize(tensor.shape().length());
+	benchmark::DoNotOptimize(tensor.length());
 }
 
 template <vext::core::BinaryOperation Kp>

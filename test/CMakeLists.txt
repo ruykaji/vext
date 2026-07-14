@@ -1,6 +1,5 @@
 include("add_gtest")
 
-add_gtest(test_shape_cpu cpu/shape.cpp vext)
 add_gtest(test_core_cpu cpu/core_operations.cpp vext)
 add_gtest(test_tensor_cpu cpu/tensor.cpp vext)
 add_gtest(test_nn_cpu cpu/nn.cpp vext)

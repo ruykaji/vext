@@ -16,10 +16,10 @@ namespace
 
 void
 expect_shape(
-	const vext::Shape&                         shape,
+	const std::vector<std::uint32_t>&          shape,
 	const std::initializer_list<std::uint32_t> expected)
 {
-	EXPECT_EQ(shape.dims(), std::vector<std::uint32_t>(expected));
+	EXPECT_EQ(shape, std::vector<std::uint32_t>(expected));
 }
 
 bool
@@ -44,9 +44,9 @@ expect_cuda_tensor_near(
 	const std::vector<float>&                    expected,
 	const float                                  tolerance = 1e-5f)
 {
-	ASSERT_EQ(tensor.shape().length(), expected.size());
+	ASSERT_EQ(tensor.length(), expected.size());
 
-	for(std::uint32_t i = 0, end = tensor.shape().length(); i < end; ++i)
+	for(std::uint32_t i = 0, end = tensor.length(); i < end; ++i)
 		{
 			EXPECT_NEAR(static_cast<float>(tensor.item(i)), expected[i], tolerance) << "at flat index " << i;
 		}
@@ -78,19 +78,6 @@ TEST(TensorCuda, ConstructsFromDimensionsWithZeroInitializedStorage)
 
 	expect_shape(tensor.shape(), { 2, 3 });
 	expect_cuda_tensor_near(tensor, { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f });
-}
-
-TEST(TensorCuda, ConstructsFromShape)
-{
-	if(!has_cuda_device())
-		{
-			GTEST_SKIP() << "No CUDA-capable device is available";
-		}
-
-	const vext::Tensor<float, vext::Backend::CUDA> tensor(vext::Shape(2, 2));
-
-	expect_shape(tensor.shape(), { 2, 2 });
-	expect_cuda_tensor_near(tensor, { 0.0f, 0.0f, 0.0f, 0.0f });
 }
 
 TEST(TensorCuda, InitializerListRejectsInconsistentShape)

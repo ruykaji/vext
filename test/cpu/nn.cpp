@@ -21,10 +21,10 @@ namespace
 
 void
 expect_shape_eq(
-	const vext::Shape&                         shape,
+	const std::vector<std::uint32_t>&          shape,
 	const std::initializer_list<std::uint32_t> expected)
 {
-	ASSERT_EQ(shape.dims(), std::vector<std::uint32_t>(expected));
+	ASSERT_EQ(shape, std::vector<std::uint32_t>(expected));
 	ASSERT_EQ(shape.size(), expected.size());
 }
 
@@ -34,7 +34,7 @@ expect_tensor_near(
 	const std::initializer_list<float> expected,
 	const float                        tolerance = 1e-5f)
 {
-	ASSERT_EQ(tensor.shape().length(), expected.size());
+	ASSERT_EQ(tensor.length(), expected.size());
 
 	std::uint32_t i = 0;
 	for(const auto value : expected)
@@ -48,7 +48,7 @@ void
 expect_tensor_finite(
 	const vext::Tensor<float>& tensor)
 {
-	for(std::uint32_t i = 0; i < tensor.shape().length(); ++i)
+	for(std::uint32_t i = 0; i < tensor.length(); ++i)
 		{
 			EXPECT_TRUE(std::isfinite(tensor.item(i))) << "at flat index " << i;
 		}
@@ -60,7 +60,7 @@ expect_tensor_between(
 	const float                lower,
 	const float                upper)
 {
-	for(std::uint32_t i = 0; i < tensor.shape().length(); ++i)
+	for(std::uint32_t i = 0; i < tensor.length(); ++i)
 		{
 			EXPECT_GE(tensor.item(i), lower) << "at flat index " << i;
 			EXPECT_LE(tensor.item(i), upper) << "at flat index " << i;
@@ -143,7 +143,7 @@ TEST(NnCpu, ModuleIteratorAllowsParameterMutation)
 
 TEST(NnCpu, ConstModuleIteratesConstParameters)
 {
-	const ParameterModule module;
+	const ParameterModule                                module;
 	vext::nn::Module<vext::Backend::CPU>::const_iterator it = module.begin();
 
 	static_assert(std::is_const_v<std::remove_reference_t<decltype(*it)>>);
@@ -161,7 +161,7 @@ TEST(NnCpu, ModuleRecursivelyIteratesChildParameters)
 {
 	ParentModule module;
 
-	std::vector<vext::Shape> shapes;
+	std::vector<std::vector<std::uint32_t>> shapes;
 
 	for(const auto& parameter : module)
 		{
@@ -178,7 +178,7 @@ TEST(NnCpu, ModuleRecursivelyIteratesChildParameters)
 
 TEST(NnCpu, ModuleIteratorPostIncrementReturnsPreviousParameter)
 {
-	ParameterModule module;
+	ParameterModule                                module;
 	vext::nn::Module<vext::Backend::CPU>::iterator it = module.begin();
 
 	const vext::nn::Module<vext::Backend::CPU>::iterator previous = it++;
@@ -259,9 +259,9 @@ TEST(NnCpu, ActivationEluUsesProvidedAlpha)
 
 TEST(NnCpu, CalculateFanInAndFanOutHandlesVectorsMatricesAndKernels)
 {
-	EXPECT_EQ(vext::nn::utils::calculate_fan_in_and_fan_out(vext::Shape(5)), (std::pair<std::uint64_t, std::uint64_t>{ 1, 5 }));
-	EXPECT_EQ(vext::nn::utils::calculate_fan_in_and_fan_out(vext::Shape(3, 2)), (std::pair<std::uint64_t, std::uint64_t>{ 2, 3 }));
-	EXPECT_EQ(vext::nn::utils::calculate_fan_in_and_fan_out(vext::Shape(16, 3, 5, 5)), (std::pair<std::uint64_t, std::uint64_t>{ 75, 400 }));
+	EXPECT_EQ(vext::nn::utils::calculate_fan_in_and_fan_out({ 5 }), (std::pair<std::uint64_t, std::uint64_t>{ 1, 5 }));
+	EXPECT_EQ(vext::nn::utils::calculate_fan_in_and_fan_out({ 3, 2 }), (std::pair<std::uint64_t, std::uint64_t>{ 2, 3 }));
+	EXPECT_EQ(vext::nn::utils::calculate_fan_in_and_fan_out({ 16, 3, 5, 5 }), (std::pair<std::uint64_t, std::uint64_t>{ 75, 400 }));
 }
 
 TEST(NnCpu, XavierUniformInitializesFiniteValuesWithinExpectedBounds)

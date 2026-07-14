@@ -56,9 +56,9 @@ expect_cuda_tensor_near(
 	const std::vector<float>&                       expected,
 	const float                                     tolerance = 1e-5f)
 {
-	ASSERT_EQ(tensor.shape().length(), expected.size());
+	ASSERT_EQ(tensor.length(), expected.size());
 
-	for(std::uint32_t i = 0; i < tensor.shape().length(); ++i)
+	for(std::uint32_t i = 0; i < tensor.length(); ++i)
 		{
 			EXPECT_NEAR(tensor.item(i), expected[i], tolerance) << "at flat index " << i;
 		}
@@ -68,7 +68,7 @@ void
 expect_cuda_tensor_finite(
 	const vext::Tensor<float, vext::Backend::CUDA>& tensor)
 {
-	for(std::uint32_t i = 0; i < tensor.shape().length(); ++i)
+	for(std::uint32_t i = 0; i < tensor.length(); ++i)
 		{
 			EXPECT_TRUE(std::isfinite(tensor.item(i))) << "at flat index " << i;
 		}
@@ -80,7 +80,7 @@ expect_cuda_tensor_between(
 	const float                                     lower,
 	const float                                     upper)
 {
-	for(std::uint32_t i = 0; i < tensor.shape().length(); ++i)
+	for(std::uint32_t i = 0; i < tensor.length(); ++i)
 		{
 			EXPECT_GE(tensor.item(i), lower) << "at flat index " << i;
 			EXPECT_LE(tensor.item(i), upper) << "at flat index " << i;
@@ -104,16 +104,16 @@ TEST(NnCuda, ModuleIteratesRegisteredParameters)
 			GTEST_SKIP() << "No CUDA-capable device is available";
 		}
 
-	ParameterModule module;
+	ParameterModule                                 module;
 	vext::nn::Module<vext::Backend::CUDA>::iterator it = module.begin();
 
 	ASSERT_NE(it, module.end());
-	EXPECT_EQ(it->shape().dims(), (std::vector<std::uint32_t>{ 2 }));
+	EXPECT_EQ(it->shape(), (std::vector<std::uint32_t>{ 2 }));
 
 	++it;
 
 	ASSERT_NE(it, module.end());
-	EXPECT_EQ(it->shape().dims(), (std::vector<std::uint32_t>{ 2, 2 }));
+	EXPECT_EQ(it->shape(), (std::vector<std::uint32_t>{ 2, 2 }));
 
 	++it;
 	EXPECT_EQ(it, module.end());
@@ -183,18 +183,18 @@ TEST(NnCuda, LinearRegistersParametersAndRunsForward)
 	vext::nn::Module<vext::Backend::CUDA>::iterator it = layer.begin();
 
 	ASSERT_NE(it, layer.end());
-	EXPECT_EQ(it->shape().dims(), (std::vector<std::uint32_t>{ 3, 4 }));
+	EXPECT_EQ(it->shape(), (std::vector<std::uint32_t>{ 3, 4 }));
 	expect_cuda_tensor_finite(*it);
 
 	++it;
 
 	ASSERT_NE(it, layer.end());
-	EXPECT_EQ(it->shape().dims(), (std::vector<std::uint32_t>{ 4 }));
+	EXPECT_EQ(it->shape(), (std::vector<std::uint32_t>{ 4 }));
 	expect_cuda_tensor_finite(*it);
 
 	const vext::Tensor<float, vext::Backend::CUDA> input({ { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } });
 	const vext::Tensor<float, vext::Backend::CUDA> output = layer(input);
 
-	EXPECT_EQ(output.shape().dims(), (std::vector<std::uint32_t>{ 2, 4 }));
+	EXPECT_EQ(output.shape(), (std::vector<std::uint32_t>{ 2, 4 }));
 	expect_cuda_tensor_finite(output);
 }
