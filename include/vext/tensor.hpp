@@ -427,20 +427,6 @@ public:
 		return *this;
 	}
 
-	template <std::integral... Is>
-	Tensor
-	operator[](
-		Is... dims)
-	{
-		const std::uint32_t used_dims = { static_cast<std::uint32_t>(dims)... };
-		const std::uint64_t dim_count = sizeof...(dims);
-
-		if(dim_count != __dims.size())
-			{
-				throw std::runtime_error("");
-			}
-	}
-
 public:
 	void
 	set_from(
@@ -865,6 +851,45 @@ public:
 		else
 			{
 				return core::cuda::operations::memget(__ptr, index);
+			}
+		#else
+		else
+			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
+			}
+		#endif
+	}
+
+	template <std::integral... Is>
+	void
+	put(
+		const T1 value,
+		Is... dims)
+	{
+		std::uint32_t index = 0;
+
+		if constexpr(sizeof...(dims) == 1)
+			{
+				index = static_cast<std::uint32_t>((dims, ...));
+			}
+		else if constexpr(sizeof...(dims) > 1)
+			{
+				index = flat_index(dims...);
+
+				if(index >= __length)
+					{
+						throw std::invalid_argument("");
+					}
+			}
+
+		if constexpr(B1 == Backend::CPU)
+			{
+				__ptr[index] = value;
+			}
+		#if VEXT_CUDA
+		else
+			{
+				return core::cuda::operations::memset(__ptr + index, value, 1);
 			}
 		#else
 		else
