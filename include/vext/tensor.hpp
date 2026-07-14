@@ -963,7 +963,7 @@ private:
 			{
 				try
 					{
-						const std::vector<std::uint32_t> broadcast_strides = rhs.__length == 1 ? lhs.__strides : broadcast(lhs.__strides, lhs.__dims, rhs.__dims);
+						const std::vector<std::uint32_t> broadcast_strides = broadcast(lhs.__strides, lhs.__dims, rhs.__dims);
 
 						if constexpr(B1 == Backend::CPU)
 							{
@@ -1220,6 +1220,11 @@ private:
 	{
 		const std::uint64_t source_size = source_dims.size();
 		const std::uint64_t target_size = target_dims.size();
+
+		if(target_size == 1 && target_dims[0] == 1)
+			{
+				return std::vector<std::uint32_t>(source_size, 0);
+			}
 
 		if(target_size > source_size)
 			{
