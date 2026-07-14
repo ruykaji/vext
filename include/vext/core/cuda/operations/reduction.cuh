@@ -101,6 +101,10 @@ reduce(
 						{
 							accumulator = ::cuda::std::max(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
+					else if constexpr(Kp == ReductionOperation::L2_NORM)
+						{
+							accumulator += src[keep_offset + reduce_offset] * src[keep_offset + reduce_offset];
+						}
 					else if constexpr(Kp == ReductionOperation::VAR || Kp == ReductionOperation::STD)
 						{
 							const float diff = src[keep_offset + reduce_offset] - out[i];
@@ -201,6 +205,10 @@ reduce(
 							else if constexpr(Kp == ReductionOperation::STD)
 								{
 									out[i] = ::cuda::std::sqrt(block_accumulate / M);
+								}
+							else if constexpr(Kp == ReductionOperation::L2_NORM)
+								{
+                                    out[i] = std::sqrt(block_accumulate);
 								}
 							else
 								{

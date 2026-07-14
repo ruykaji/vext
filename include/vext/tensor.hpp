@@ -694,6 +694,14 @@ public:
 		return execute_reduction<core::ReductionOperation::STD, float>(*this, axis...);
 	}
 
+    template <std::integral... Is>
+	Tensor<float, B1>
+	l2_norm(
+		Is... axis) const
+	{
+		return execute_reduction<core::ReductionOperation::L2_NORM, float>(*this, axis...);
+	}
+
 	template <Backend B2, Backend B3>
 	Tensor<T1, B1>
 	csr_scatter_sum(

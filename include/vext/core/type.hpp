@@ -74,7 +74,8 @@ enum class ReductionOperation : std::uint8_t
 	MIN,
 	PROD,
 	STD,
-	VAR
+	VAR,
+	L2_NORM
 };
 
 enum class CSRScatterOperation : std::uint8_t
