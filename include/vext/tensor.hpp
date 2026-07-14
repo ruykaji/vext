@@ -475,7 +475,12 @@ public:
         std::ranges::for_each(std::next(rhs.__dims.begin()), rhs.__dims.end(), [&rhs_combined, &remainder](const std::uint32_t dim){ rhs_combined *= dim; remainder.emplace_back(dim); });
 		// clang-format on
 
-		Tensor<std::common_type_t<T1, T2>, B1> out(remainder);
+		if(remainder.empty())
+			{
+				remainder.emplace_back(1);
+			}
+
+		Tensor<std::common_type_t<T1, T2>, B1> out( remainder);
 
 		if constexpr(B1 == Backend::CPU)
 			{
