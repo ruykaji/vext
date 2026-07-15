@@ -433,42 +433,42 @@ public:
 		return *this;
 	}
 
-    /** === Scalar operators */
+	/** === Scalar operators */
 
-    template <core::Arithmetic T2>
+	template <core::Arithmetic T2>
 	Tensor
 	operator+(
-		const T2 value)
+		const T2 value) const
 	{
 		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
 		execute_unary_operation<core::UnaryOperation::LINEAR>(out, 1.0, value);
 		return out;
 	}
 
-    template <core::Arithmetic T2>
+	template <core::Arithmetic T2>
 	Tensor
 	operator-(
-		const T2 value)
+		const T2 value) const
 	{
 		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
 		execute_unary_operation<core::UnaryOperation::LINEAR>(out, 1.0, -value);
 		return out;
 	}
 
-    template <core::Arithmetic T2>
+	template <core::Arithmetic T2>
 	Tensor
 	operator*(
-		const T2 value)
+		const T2 value) const
 	{
 		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
 		execute_unary_operation<core::UnaryOperation::LINEAR>(out, value, 0);
 		return out;
 	}
 
-    template <core::Arithmetic T2>
+	template <core::Arithmetic T2>
 	Tensor
 	operator/(
-		const T2 value)
+		const T2 value) const
 	{
 		if(value == 0)
 			{
@@ -482,7 +482,7 @@ public:
 
 	/** === Scalar inplace operators === */
 
-    template <core::Arithmetic T2>
+	template <core::Arithmetic T2>
 	Tensor&
 	operator+=(
 		const T2 value)
@@ -491,7 +491,7 @@ public:
 		return *this;
 	}
 
-    template <core::Arithmetic T2>
+	template <core::Arithmetic T2>
 	Tensor&
 	operator-=(
 		const T2 value)
@@ -500,7 +500,7 @@ public:
 		return *this;
 	}
 
-    template <core::Arithmetic T2>
+	template <core::Arithmetic T2>
 	Tensor&
 	operator*=(
 		const T2 value)
@@ -509,7 +509,7 @@ public:
 		return *this;
 	}
 
-    template <core::Arithmetic T2>
+	template <core::Arithmetic T2>
 	Tensor&
 	operator/=(
 		const T2 value)
