@@ -274,7 +274,7 @@ public:
 		#if VEXT_CUDA
 		else
 			{
-				return core::cude::operations::memget(__ptr, 1);
+				return core::cuda::operations::memget(__ptr, 1);
 			}
 		#else
 		else
@@ -1107,7 +1107,7 @@ private:
 			}
 	}
 
-	template <core::UnaryOperation Kp, std::floating_point... Is>
+	template <core::UnaryOperation Kp, core::Arithmetic... Is>
 	static void
 	execute_unary_operation(
 		Tensor<T1, B1>& out,

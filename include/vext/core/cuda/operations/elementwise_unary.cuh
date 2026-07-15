@@ -105,7 +105,7 @@ assign_sum(
 		}
 }
 
-template <UnaryOperation Kp, typename T1, std::floating_point... Is>
+template <UnaryOperation Kp, typename T1, core::Arithmetic... Is>
 __global__ void
 unary(
 	T1* __restrict__ out,
@@ -218,7 +218,7 @@ unary(
 namespace vext::core::cuda::operations
 {
 
-template <UnaryOperation Kp, typename T1, std::floating_point... Is>
+template <UnaryOperation Kp, typename T1, core::Arithmetic... Is>
 void
 unary(
 	T1*                 out,

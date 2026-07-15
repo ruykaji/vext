@@ -8,7 +8,7 @@
 namespace vext::core::cpu::operations
 {
 
-template <UnaryOperation Kp, typename T1, std::floating_point... Is>
+template <UnaryOperation Kp, typename T1, core::Arithmetic... Is>
 static void
 unary(
 	T1* __restrict__ out,
