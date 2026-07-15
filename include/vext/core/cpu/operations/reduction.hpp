@@ -13,8 +13,8 @@ namespace vext::core::cpu::operations
 template <ReductionOperation Kp, typename T1, typename T2>
 void
 reduce(
-	T1*                               out,
-	const T2*                         src,
+	T1* __restrict__ out,
+	const T2* __restrict__ src,
 	const std::uint32_t               N,
 	const std::uint32_t               M,
 	const std::vector<std::uint32_t>& keep_dims,

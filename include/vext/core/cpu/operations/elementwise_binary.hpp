@@ -14,8 +14,8 @@ static void
 binary(
 	std::common_type_t<T1, T2>* out,
 	const T1*                   a,
-	const T2*                   b,
-	const std::uint32_t         N)
+	const T2* __restrict__ b,
+	const std::uint32_t N)
 {
 	for(std::uint32_t i = 0; i < N; ++i)
 		{

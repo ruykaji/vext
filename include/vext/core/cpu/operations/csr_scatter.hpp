@@ -13,12 +13,12 @@ namespace vext::core::cpu::operations
 template <CSRScatterOperation Kp, typename T1, typename T2>
 void
 csr_scatter(
-	T1*                  out,
-	const T2*            src,
-	const std::uint32_t* head,
-	const std::uint32_t* tail,
-	const std::uint32_t  N,
-	const std::uint32_t  S)
+	T1* __restrict__ out,
+	const T2* __restrict__ src,
+	const std::uint32_t* __restrict__ head,
+	const std::uint32_t* __restrict__ tail,
+	const std::uint32_t N,
+	const std::uint32_t S)
 {
 	std::vector<float> mean_buffer;
 

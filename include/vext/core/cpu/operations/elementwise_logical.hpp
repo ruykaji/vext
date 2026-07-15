@@ -11,9 +11,9 @@ namespace vext::core::cpu::operations
 template <LogicOperation Kp, typename T1, typename T2>
 static void
 logical(
-	std::uint8_t*       out,
-	const T1*           a,
-	const T2*           b,
+	std::uint8_t* __restrict__ out,
+	const T1* __restrict__ a,
+	const T2* __restrict__ b,
 	const std::uint32_t N)
 {
 	if(a == b)

@@ -12,13 +12,16 @@ namespace vext::core::cpu::operations
 template <CSRSpMVOperation Kp, typename T1, typename T2, typename T3>
 void
 csr_spmv(
-	T1*                  y,
-	const T2*            A,
-	const std::uint32_t* head,
-	const std::uint32_t* tail,
-	const T3*            x,
-	const std::uint32_t  N)
+	T1* __restrict__ y,
+	const T2* __restrict__ A,
+	const std::uint32_t* __restrict__ head,
+	const std::uint32_t* __restrict__ tail,
+	const T3* __restrict__ x,
+	const std::uint32_t N)
 {
+	#ifdef _OPENMP
+		#pragma omp parallel for schedule(static)
+	#endif
 	for(std::uint32_t i = 0; i < N; ++i)
 		{
 			const std::uint32_t start = head[i];

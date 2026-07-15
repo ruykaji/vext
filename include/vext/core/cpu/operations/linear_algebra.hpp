@@ -12,12 +12,12 @@ namespace vext::core::cpu::operations
 template <typename T1, typename T2>
 void
 matmul(
-	std::common_type_t<T1, T2>* out,
-	const T1*                   a,
-	const T2*                   b,
-	const std::uint32_t         M,
-	const std::uint32_t         P,
-	const std::uint32_t         N)
+	std::common_type_t<T1, T2>* __restrict__ out,
+	const T1* __restrict__ a,
+	const T2* __restrict__ b,
+	const std::uint32_t M,
+	const std::uint32_t P,
+	const std::uint32_t N)
 {
 	for(std::uint32_t m = 0; m < M; ++m)
 		{

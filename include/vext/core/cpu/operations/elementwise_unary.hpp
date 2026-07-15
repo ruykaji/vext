@@ -11,7 +11,7 @@ namespace vext::core::cpu::operations
 template <UnaryOperation Kp, typename T1, std::floating_point... Is>
 static void
 unary(
-	T1*                 out,
+	T1* __restrict__ out,
 	const std::uint32_t N,
 	Is... param)
 {
