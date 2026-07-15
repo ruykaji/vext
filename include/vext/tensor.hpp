@@ -263,6 +263,27 @@ public:
 	}
 
 public:
+	/** === Cast operators === */
+
+	operator T1()
+	{
+		if constexpr(B1 == Backend::CPU)
+			{
+				return __ptr[0];
+			}
+		#if VEXT_CUDA
+		else
+			{
+				return core::cude::operations::memget(__ptr, 1);
+			}
+		#else
+		else
+			{
+				static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
+			}
+		 #endif
+	}
+
 	/** === Logical operators === */
 
 	template <typename T2, Backend B2>
@@ -436,7 +457,7 @@ public:
 	/** === Scalar operators */
 
 	template <core::Arithmetic T2>
-	Tensor
+	auto
 	operator+(
 		const T2 value) const
 	{
@@ -446,7 +467,7 @@ public:
 	}
 
 	template <core::Arithmetic T2>
-	Tensor
+	auto
 	operator-(
 		const T2 value) const
 	{
@@ -456,7 +477,7 @@ public:
 	}
 
 	template <core::Arithmetic T2>
-	Tensor
+	auto
 	operator*(
 		const T2 value) const
 	{
@@ -466,7 +487,7 @@ public:
 	}
 
 	template <core::Arithmetic T2>
-	Tensor
+	auto
 	operator/(
 		const T2 value) const
 	{
