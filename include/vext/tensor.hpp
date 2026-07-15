@@ -457,37 +457,37 @@ public:
 	/** === Scalar operators */
 
 	template <core::Arithmetic T2>
-	auto
+	Tensor
 	operator+(
 		const T2 value) const
 	{
-		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
+		Tensor out = *this;
 		execute_unary_operation<core::UnaryOperation::LINEAR>(out, 1.0, value);
 		return out;
 	}
 
 	template <core::Arithmetic T2>
-	auto
+	Tensor
 	operator-(
 		const T2 value) const
 	{
-		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
+		Tensor out = *this;
 		execute_unary_operation<core::UnaryOperation::LINEAR>(out, 1.0, -value);
 		return out;
 	}
 
 	template <core::Arithmetic T2>
-	auto
+	Tensor
 	operator*(
 		const T2 value) const
 	{
-		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
+		Tensor out = *this;
 		execute_unary_operation<core::UnaryOperation::LINEAR>(out, value, 0);
 		return out;
 	}
 
 	template <core::Arithmetic T2>
-	auto
+	Tensor
 	operator/(
 		const T2 value) const
 	{
@@ -496,7 +496,7 @@ public:
 				throw std::runtime_error("");
 			}
 
-		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
+		Tensor out = *this;
 		execute_unary_operation<core::UnaryOperation::LINEAR>(out, 1.0 / value, 0);
 		return out;
 	}
