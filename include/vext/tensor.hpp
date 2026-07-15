@@ -263,6 +263,8 @@ public:
 	}
 
 public:
+	/** === Logical operators === */
+
 	template <typename T2, Backend B2>
 	friend auto
 	operator==(
@@ -329,6 +331,8 @@ public:
 		return out;
 	}
 
+	/** === Bitwise operators === */
+
 	template <typename T2, Backend B2>
 	friend auto
 	operator+(
@@ -382,6 +386,8 @@ public:
 		return out;
 	}
 
+	/** === Bitwise inplace operators === */
+
 	template <typename T2, Backend B2>
 	Tensor&
 	operator+=(
@@ -426,6 +432,98 @@ public:
 		execute_binary_operation<core::BinaryOperation::POW>(*this, *this, rhs);
 		return *this;
 	}
+
+    /** === Scalar operators */
+
+    template <core::Arithmetic T2>
+	Tensor
+	operator+(
+		const T2 value)
+	{
+		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
+		execute_unary_operation<core::UnaryOperation::LINEAR>(out, 1.0, value);
+		return out;
+	}
+
+    template <core::Arithmetic T2>
+	Tensor
+	operator-(
+		const T2 value)
+	{
+		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
+		execute_unary_operation<core::UnaryOperation::LINEAR>(out, 1.0, -value);
+		return out;
+	}
+
+    template <core::Arithmetic T2>
+	Tensor
+	operator*(
+		const T2 value)
+	{
+		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
+		execute_unary_operation<core::UnaryOperation::LINEAR>(out, value, 0);
+		return out;
+	}
+
+    template <core::Arithmetic T2>
+	Tensor
+	operator/(
+		const T2 value)
+	{
+		if(value == 0)
+			{
+				throw std::runtime_error("");
+			}
+
+		Tensor<std::common_type_t<T1, T2>, B1> out = *this;
+		execute_unary_operation<core::UnaryOperation::LINEAR>(out, 1.0 / value, 0);
+		return out;
+	}
+
+	/** === Scalar inplace operators === */
+
+    template <core::Arithmetic T2>
+	Tensor&
+	operator+=(
+		const T2 value)
+	{
+		execute_unary_operation<core::UnaryOperation::LINEAR>(*this, 1.0, value);
+		return *this;
+	}
+
+    template <core::Arithmetic T2>
+	Tensor&
+	operator-=(
+		const T2 value)
+	{
+		execute_unary_operation<core::UnaryOperation::LINEAR>(*this, 1.0, -value);
+		return *this;
+	}
+
+    template <core::Arithmetic T2>
+	Tensor&
+	operator*=(
+		const T2 value)
+	{
+		execute_unary_operation<core::UnaryOperation::LINEAR>(*this, value, 0);
+		return *this;
+	}
+
+    template <core::Arithmetic T2>
+	Tensor&
+	operator/=(
+		const T2 value)
+	{
+		if(value == 0)
+			{
+				throw std::runtime_error("");
+			}
+
+		execute_unary_operation<core::UnaryOperation::LINEAR>(*this, 1.0 / value, 0);
+		return *this;
+	}
+
+	/** === Slef changing operators === */
 
 	Tensor&
 	operator-()

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <type_traits>
 
 namespace vext::core
 {
@@ -14,6 +15,9 @@ inline constexpr std::uint32_t MAX_LENGTH = std::numeric_limits<std::uint32_t>::
 
 template <auto...>
 inline constexpr bool dependent_false = false;
+
+template <typename Tp>
+concept Arithmetic = std::is_arithmetic_v<Tp>;
 
 enum class UnaryOperation : std::uint8_t
 {
