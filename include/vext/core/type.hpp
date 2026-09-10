@@ -5,6 +5,8 @@
 #include <limits>
 #include <type_traits>
 
+#include <vext/type.hpp>
+
 namespace vext::core
 {
 
@@ -19,90 +21,29 @@ inline constexpr bool dependent_false = false;
 template <typename Tp>
 concept Arithmetic = std::is_arithmetic_v<Tp>;
 
-enum class UnaryOperation : std::uint8_t
-{
-	/** -- NO PARAMETERS REQUIRED -- */
-	ABS = 0,
-	SIN,
-	COS,
-	TANH,
-	NEG,
-	EXP,
-	LOG,
-	SQRT,
-	SQUARE,
-	ROUND,
-	SIGMOID,
-	SOFT_RELU,
-	RELU,
-	SOFTMAX,
-	SOFTMIN,
-	LOGSOFTMAX,
-	/** -- REQUIRES ALPHA -- */
-	LEAKY_RELU,
-	ELU,
-	SWISH,
-	/** -- REQUIRES ALPHA AND BETA -- */
-	LINEAR,
-	CLIP,
-	POW
-};
+/** === Reduction return type deduction == */
 
-enum class BinaryOperation : std::uint8_t
-{
-	ADD = 0,
-	SUB,
-	MUL,
-	DIV,
-	POW,
-	MIN,
-	MAX,
-	PRELU
-};
+template <ReductionOp Kp>
+inline constexpr bool is_float_reducing = Kp == ReductionOp::MEAN || Kp == ReductionOp::VAR || Kp == ReductionOp::STD || Kp == ReductionOp::L2_NORM;
 
-enum class LogicOperation : std::uint8_t
-{
-	EQUAL = 0,
-	NOT_EQUAL,
-	LESS,
-	LESS_EQUAL,
-	GREATER,
-	GREATER_EQUAL
-};
+template <ReductionOp Kp, typename Tp>
+using ReductionOut = std::conditional_t<is_float_reducing<Kp>, float, Tp>;
 
-enum class ReductionOperation : std::uint8_t
-{
-	SUM = 0,
-	MEAN,
-	MAX,
-	MIN,
-	PROD,
-	STD,
-	VAR,
-	L2_NORM
-};
+/** === CSR Scatter return type deduction == */
 
-enum class CSRScatterOperation : std::uint8_t
-{
-	SUM = 0,
-	MEAN,
-	MAX,
-	MIN,
-	PROD,
-	STD,
-	VAR
-};
+template <CSRScatterOp Kp>
+inline constexpr bool is_float_csr_scatter = Kp == CSRScatterOp::MEAN || Kp == CSRScatterOp::VAR || Kp == CSRScatterOp::STD;
 
-enum class CSRSpMVOperation : std::uint8_t
-{
-	SUM = 0,
-	MEAN,
-	MAX,
-	MIN,
-	PROD,
-	STD,
-	VAR
-};
+template <CSRScatterOp Kp, typename Tp>
+using CSRScatterOut = std::conditional_t<is_float_csr_scatter<Kp>, float, Tp>;
+
+/** === CSR SpMV return type deduction == */
+
+template <CSRSpMVOp Kp>
+inline constexpr bool is_float_csr_spmv = Kp == CSRSpMVOp::MEAN || Kp == CSRSpMVOp::VAR || Kp == CSRSpMVOp::STD;
+
+template <CSRSpMVOp Kp, typename Tp>
+using CSRSpMVOut = std::conditional_t<is_float_csr_spmv<Kp>, float, Tp>;
 
 }
 

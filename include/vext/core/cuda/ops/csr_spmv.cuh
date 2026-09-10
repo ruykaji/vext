@@ -1,5 +1,5 @@
-#ifndef __VEXT_CORE_CPU_OPERATIONS_CSR_SPMV_CUH__
-#define __VEXT_CORE_CPU_OPERATIONS_CSR_SPMV_CUH__
+#ifndef __VEXT_CORE_CPU_OPS_CSR_SPMV_CUH__
+#define __VEXT_CORE_CPU_OPS_CSR_SPMV_CUH__
 
 #include <iostream>
 
@@ -8,6 +8,7 @@
 #include <cuda_runtime.h>
 
 #include <vext/core/type.hpp>
+#include <vext/type.hpp>
 
 #define CUDA_CHECK(call)                                                                                            \
 	do                                                                                                               \
@@ -21,10 +22,10 @@
 		}                                                                                                             \
 	while(0)
 
-namespace vext::core::cuda::operations::kernel
+namespace vext::core::cuda::ops::kernel
 {
 
-template <CSRSpMVOperation Kp, typename T1, typename T2, typename T3>
+template <CSRSpMVOp Kp, typename T1, typename T2, typename T3>
 __global__ void
 csr_spmv(
 	T1* __restrict__ y,
@@ -41,15 +42,15 @@ csr_spmv(
 
 			T1 accumulator = 0;
 
-			if constexpr(Kp == CSRSpMVOperation::PROD)
+			if constexpr(Kp == CSRSpMVOp::PROD)
 				{
 					accumulator = 1;
 				}
-			else if constexpr(Kp == CSRSpMVOperation::MIN)
+			else if constexpr(Kp == CSRSpMVOp::MIN)
 				{
 					accumulator = ::cuda::std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == CSRSpMVOperation::MAX)
+			else if constexpr(Kp == CSRSpMVOp::MAX)
 				{
 					accumulator = ::cuda::std::numeric_limits<T1>::lowest();
 				}
@@ -58,19 +59,19 @@ csr_spmv(
 				{
 					const T1 prod = A[h] * x[tail[h]];
 
-					if constexpr(Kp == CSRSpMVOperation::PROD)
+					if constexpr(Kp == CSRSpMVOp::PROD)
 						{
 							accumulator *= prod;
 						}
-					else if constexpr(Kp == CSRSpMVOperation::MIN)
+					else if constexpr(Kp == CSRSpMVOp::MIN)
 						{
 							accumulator = ::cuda::std::min<T1>(accumulator, prod);
 						}
-					else if constexpr(Kp == CSRSpMVOperation::MAX)
+					else if constexpr(Kp == CSRSpMVOp::MAX)
 						{
 							accumulator = ::cuda::std::max<T1>(accumulator, prod);
 						}
-					else if constexpr(Kp == CSRSpMVOperation::VAR || Kp == CSRSpMVOperation::STD)
+					else if constexpr(Kp == CSRSpMVOp::VAR || Kp == CSRSpMVOp::STD)
 						{
 							const float diff = prod - y[i];
 							accumulator += diff * diff;
@@ -85,15 +86,15 @@ csr_spmv(
 				{
 					const T2 shuffled = __shfl_down_sync(0xffffffff, accumulator, offset);
 
-					if constexpr(Kp == CSRSpMVOperation::PROD)
+					if constexpr(Kp == CSRSpMVOp::PROD)
 						{
 							accumulator *= shuffled;
 						}
-					else if constexpr(Kp == CSRSpMVOperation::MIN)
+					else if constexpr(Kp == CSRSpMVOp::MIN)
 						{
 							accumulator = (shuffled < accumulator) ? shuffled : accumulator;
 						}
-					else if constexpr(Kp == CSRSpMVOperation::MAX)
+					else if constexpr(Kp == CSRSpMVOp::MAX)
 						{
 							accumulator = (shuffled > accumulator) ? shuffled : accumulator;
 						}
@@ -117,15 +118,15 @@ csr_spmv(
 
 			T2 block_accumulate = 0;
 
-			if constexpr(Kp == CSRSpMVOperation::PROD)
+			if constexpr(Kp == CSRSpMVOp::PROD)
 				{
 					block_accumulate = 1;
 				}
-			else if constexpr(Kp == CSRSpMVOperation::MIN)
+			else if constexpr(Kp == CSRSpMVOp::MIN)
 				{
 					block_accumulate = ::cuda::std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == CSRSpMVOperation::MAX)
+			else if constexpr(Kp == CSRSpMVOp::MAX)
 				{
 					block_accumulate = ::cuda::std::numeric_limits<T1>::lowest();
 				}
@@ -143,15 +144,15 @@ csr_spmv(
 						{
 							const T2 shuffled = __shfl_down_sync(0xffffffff, block_accumulate, offset);
 
-							if constexpr(Kp == CSRSpMVOperation::PROD)
+							if constexpr(Kp == CSRSpMVOp::PROD)
 								{
 									block_accumulate *= shuffled;
 								}
-							else if constexpr(Kp == CSRSpMVOperation::MIN)
+							else if constexpr(Kp == CSRSpMVOp::MIN)
 								{
 									block_accumulate = (shuffled < block_accumulate) ? shuffled : block_accumulate;
 								}
-							else if constexpr(Kp == CSRSpMVOperation::MAX)
+							else if constexpr(Kp == CSRSpMVOp::MAX)
 								{
 									block_accumulate = (shuffled > block_accumulate) ? shuffled : block_accumulate;
 								}
@@ -163,12 +164,12 @@ csr_spmv(
 
 					if(lane == 0)
 						{
-							if constexpr(Kp == CSRSpMVOperation::MEAN || Kp == CSRSpMVOperation::VAR)
+							if constexpr(Kp == CSRSpMVOp::MEAN || Kp == CSRSpMVOp::VAR)
 								{
 									const float scale = 1.0f / (end - start);
 									y[i]              = block_accumulate * scale;
 								}
-							else if constexpr(Kp == CSRSpMVOperation::STD)
+							else if constexpr(Kp == CSRSpMVOp::STD)
 								{
 									const float scale = 1.0f / (end - start);
 									y[i]              = ::cuda::std::sqrt(block_accumulate * scale);
@@ -186,10 +187,10 @@ csr_spmv(
 
 }
 
-namespace vext::core::cuda::operations
+namespace vext::core::cuda::ops
 {
 
-template <CSRSpMVOperation Kp, typename T1, typename T2, typename T3>
+template <CSRSpMVOp Kp, typename T1, typename T2, typename T3>
 void
 csr_spmv(
 	T1*                  y,
@@ -202,17 +203,17 @@ csr_spmv(
 	constexpr std::uint32_t block_size = 256;
 	const std::uint32_t     grid_size  = (N + block_size - 1) / block_size;
 
-	if constexpr(Kp == CSRSpMVOperation::VAR || Kp == CSRSpMVOperation::STD)
+	if constexpr(Kp == CSRSpMVOp::VAR || Kp == CSRSpMVOp::STD)
 		{
-			kernel::csr_spmv<CSRSpMVOperation::MEAN, T1, T2><<<grid_size, block_size>>>(y, A, head, tail, x, N);
+			kernel::csr_spmv<CSRSpMVOp::MEAN><<<grid_size, block_size>>>(y, A, head, tail, x, N);
 			CUDA_CHECK(cudaGetLastError());
 
-			kernel::csr_spmv<Kp, T1, T2, T3><<<grid_size, block_size>>>(y, A, head, tail, x, N);
+			kernel::csr_spmv<Kp><<<grid_size, block_size>>>(y, A, head, tail, x, N);
 			CUDA_CHECK(cudaGetLastError());
 		}
 	else
 		{
-			kernel::csr_spmv<Kp, T1, T2, T3><<<grid_size, block_size>>>(y, A, head, tail, x, N);
+			kernel::csr_spmv<Kp><<<grid_size, block_size>>>(y, A, head, tail, x, N);
 			CUDA_CHECK(cudaGetLastError());
 		}
 }

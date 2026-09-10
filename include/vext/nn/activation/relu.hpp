@@ -1,8 +1,8 @@
 #ifndef __VEXT_NN_ACTIVATION_RELU_HPP__
 #define __VEXT_NN_ACTIVATION_RELU_HPP__
 
-#include "vext/type.hpp"
 #include <vext/nn/module.hpp>
+#include <vext/ops.hpp>
 
 namespace vext::nn::activation
 {
@@ -20,14 +20,14 @@ public:
 	{
 		if constexpr(Mp == Mutation::IN_PLACE)
 			{
-				x.relu();
+				ops::unary<UnaryOp::RELU>(x);
 			}
 		else if constexpr(Mp == Mutation::COPY)
 			{
 				Tensor<float, Bp> copy(x);
-				copy.relu();
+				ops::unary<UnaryOp::RELU>(copy);
 
-                return copy;
+				return copy;
 			}
 	}
 };

@@ -20,7 +20,7 @@
 		}                                                                                                             \
 	while(0)
 
-namespace vext::core::cuda::operations
+namespace vext::core::cuda::ops
 {
 
 template <typename Tp>

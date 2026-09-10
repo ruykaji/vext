@@ -2,6 +2,7 @@
 #define __VEXT_NN_ACTIVATION_ELU_HPP__
 
 #include <vext/nn/module.hpp>
+#include <vext/ops.hpp>
 
 namespace vext::nn::activation
 {
@@ -20,12 +21,12 @@ public:
 	{
 		if constexpr(Mp == Mutation::IN_PLACE)
 			{
-				x.elu(a);
+				ops::unary<UnaryOp::ELU>(x, a);
 			}
 		else if constexpr(Mp == Mutation::COPY)
 			{
 				Tensor<float, Bp> copy(x);
-				copy.elu(a);
+				ops::unary<UnaryOp::ELU>(copy, a);
 
 				return copy;
 			}

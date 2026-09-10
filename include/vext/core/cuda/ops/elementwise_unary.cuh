@@ -1,5 +1,5 @@
-#ifndef __VEXT_CORE_CUDA_OPERATIONS_ELEMENTWISE_UNARY_CUH__
-#define __VEXT_CORE_CUDA_OPERATIONS_ELEMENTWISE_UNARY_CUH__
+#ifndef __VEXT_CORE_CUDA_OPS_ELEMENTWISE_UNARY_CUH__
+#define __VEXT_CORE_CUDA_OPS_ELEMENTWISE_UNARY_CUH__
 
 #include <iostream>
 
@@ -9,6 +9,7 @@
 #include <cuda_runtime.h>
 
 #include <vext/core/type.hpp>
+#include <vext/type.hpp>
 
 #define CUDA_CHECK(call)                                                                                            \
 	do                                                                                                               \
@@ -22,7 +23,7 @@
 		}                                                                                                             \
 	while(0)
 
-namespace vext::core::cuda::operations::kernel
+namespace vext::core::cuda::ops::kernel
 {
 
 template <typename Tp>
@@ -82,7 +83,7 @@ reduce_sum(
 		}
 }
 
-template <UnaryOperation Kp, typename Tp>
+template <UnaryOp Kp, typename Tp>
 __global__ void
 assign_sum(
 	Tp* __restrict__ x,
@@ -94,18 +95,18 @@ assign_sum(
 
 	for(std::uint32_t i = tid; i < N; i += stride)
 		{
-			if constexpr(Kp == UnaryOperation::SOFTMAX || Kp == UnaryOperation::SOFTMIN)
+			if constexpr(Kp == UnaryOp::SOFTMAX || Kp == UnaryOp::SOFTMIN)
 				{
 					x[i] /= sum[0];
 				}
-			else if constexpr(Kp == UnaryOperation::LOGSOFTMAX)
+			else if constexpr(Kp == UnaryOp::LOGSOFTMAX)
 				{
 					x[i] = ::cuda::std::log(x[i] / sum[0]);
 				}
 		}
 }
 
-template <UnaryOperation Kp, typename T1, core::Arithmetic... Is>
+template <UnaryOp Kp, typename T1, core::Arithmetic... Is>
 __global__ void
 unary(
 	T1* __restrict__ out,
@@ -117,94 +118,94 @@ unary(
 
 	for(std::uint32_t i = tid; i < N; i += stride)
 		{
-			if constexpr(Kp == UnaryOperation::ABS)
+			if constexpr(Kp == UnaryOp::ABS)
 				{
 					out[i] = ::cuda::std::abs(out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::SIN)
+			else if constexpr(Kp == UnaryOp::SIN)
 				{
 					out[i] = ::cuda::std::sin(out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::COS)
+			else if constexpr(Kp == UnaryOp::COS)
 				{
 					out[i] = ::cuda::std::cos(out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::TANH)
+			else if constexpr(Kp == UnaryOp::TANH)
 				{
 					out[i] = ::cuda::std::tanh(out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::NEG)
+			else if constexpr(Kp == UnaryOp::NEG)
 				{
 					out[i] = -out[i];
 				}
-			else if constexpr(Kp == UnaryOperation::EXP)
+			else if constexpr(Kp == UnaryOp::EXP)
 				{
 					out[i] = ::cuda::std::exp(out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::LOG)
+			else if constexpr(Kp == UnaryOp::LOG)
 				{
 					out[i] = ::cuda::std::log(out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::SQRT)
+			else if constexpr(Kp == UnaryOp::SQRT)
 				{
 					out[i] = ::cuda::std::sqrt(out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::SQUARE)
+			else if constexpr(Kp == UnaryOp::SQUARE)
 				{
 					out[i] *= out[i];
 				}
-			else if constexpr(Kp == UnaryOperation::ROUND)
+			else if constexpr(Kp == UnaryOp::ROUND)
 				{
 					out[i] = ::cuda::std::round(out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::SIGMOID)
+			else if constexpr(Kp == UnaryOp::SIGMOID)
 				{
 					out[i] = 1.0f / (1.0f + ::cuda::std::exp(-out[i]));
 				}
-			else if constexpr(Kp == UnaryOperation::SOFT_RELU)
+			else if constexpr(Kp == UnaryOp::SOFT_RELU)
 				{
 					out[i] = ::cuda::std::log(1.0f + ::cuda::std::exp(out[i]));
 				}
-			else if constexpr(Kp == UnaryOperation::RELU)
+			else if constexpr(Kp == UnaryOp::RELU)
 				{
 					out[i] = out[i] > 0 ? out[i] : 0;
 				}
-			else if constexpr(Kp == UnaryOperation::SOFTMAX || Kp == UnaryOperation::LOGSOFTMAX)
+			else if constexpr(Kp == UnaryOp::SOFTMAX || Kp == UnaryOp::LOGSOFTMAX)
 				{
 					out[i] = ::cuda::std::exp(out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::SOFTMIN)
+			else if constexpr(Kp == UnaryOp::SOFTMIN)
 				{
 					out[i] = ::cuda::std::exp(-out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::LEAKY_RELU)
+			else if constexpr(Kp == UnaryOp::LEAKY_RELU)
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
 					out[i]        = out[i] > 0 ? out[i] : (a * out[i]);
 				}
-			else if constexpr(Kp == UnaryOperation::ELU)
+			else if constexpr(Kp == UnaryOp::ELU)
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
 					out[i]        = out[i] > 0 ? out[i] : a * (::cuda::std::exp(out[i]) - 1.0f);
 				}
-			else if constexpr(Kp == UnaryOperation::SWISH)
+			else if constexpr(Kp == UnaryOp::SWISH)
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
 					out[i]        = out[i] / (1.0f + ::cuda::std::exp(-a * out[i]));
 				}
-			else if constexpr(Kp == UnaryOperation::LINEAR)
+			else if constexpr(Kp == UnaryOp::LINEAR)
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
 					const float b = static_cast<float>(::cuda::std::get<1>(::cuda::std::tuple{ param... }));
 					out[i]        = a * out[i] + b;
 				}
-			else if constexpr(Kp == UnaryOperation::CLIP)
+			else if constexpr(Kp == UnaryOp::CLIP)
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
 					const float b = static_cast<float>(::cuda::std::get<1>(::cuda::std::tuple{ param... }));
 					out[i]        = ::cuda::std::max(a, ::cuda::std::min(b, out[i]));
 				}
-			else if constexpr(Kp == UnaryOperation::POW)
+			else if constexpr(Kp == UnaryOp::POW)
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
 					const float b = static_cast<float>(::cuda::std::get<1>(::cuda::std::tuple{ param... }));
@@ -215,10 +216,10 @@ unary(
 
 }
 
-namespace vext::core::cuda::operations
+namespace vext::core::cuda::ops
 {
 
-template <UnaryOperation Kp, typename T1, core::Arithmetic... Is>
+template <UnaryOp Kp, typename T1, core::Arithmetic... Is>
 void
 unary(
 	T1*                 out,
@@ -228,7 +229,7 @@ unary(
 	constexpr std::int32_t block_size = 256;
 	const std::uint32_t    grid_size  = (N + block_size - 1) / block_size;
 
-	if constexpr(Kp == UnaryOperation::SOFTMAX || Kp == UnaryOperation::SOFTMIN || Kp == UnaryOperation::LOGSOFTMAX)
+	if constexpr(Kp == UnaryOp::SOFTMAX || Kp == UnaryOp::SOFTMIN || Kp == UnaryOp::LOGSOFTMAX)
 		{
 			kernel::unary<Kp, T1><<<grid_size, block_size>>>(out, N, param...);
 			CUDA_CHECK(cudaGetLastError());

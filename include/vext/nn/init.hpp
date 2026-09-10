@@ -1,11 +1,12 @@
 #ifndef __VEXT_NN_UTILS_INIT_HPP__
 #define __VEXT_NN_UTILS_INIT_HPP__
 
+#include <algorithm>
 #include <random>
 
 #include <vext/tensor.hpp>
 
-namespace vext::nn::utils
+namespace vext::nn
 {
 
 inline std::pair<std::uint64_t, std::uint64_t>
@@ -35,7 +36,7 @@ void
 xavier_normal(
 	Tensor<float, Bp>& weight)
 {
-	const std::vector<std::uint32_t>& shape = weight.shape();
+	const std::vector<std::uint32_t>& shape = weight.dims();
 	const auto [fan_in, fan_out]            = calculate_fan_in_and_fan_out(shape);
 	const float sigma                       = 2.0f / (fan_in + fan_out);
 
@@ -55,7 +56,7 @@ void
 xavier_uniform(
 	Tensor<float, Bp>& weight)
 {
-	const std::vector<std::uint32_t>& shape = weight.shape();
+	const std::vector<std::uint32_t>& shape = weight.dims();
 	const auto [fan_in, fan_out]            = calculate_fan_in_and_fan_out(shape);
 	const float sigma                       = 2.0f / (fan_in + fan_out);
 	const float a                           = std::sqrt(3.0f * sigma);
@@ -77,7 +78,7 @@ kaiming_normal(
 	Tensor<float, Bp>& weight,
 	const float        alph = 0.0f)
 {
-	const std::vector<std::uint32_t>& shape = weight.shape();
+	const std::vector<std::uint32_t>& shape = weight.dims();
 	const auto [fan_in, _]                  = calculate_fan_in_and_fan_out(shape);
 	const float gain                        = std::sqrt(2.0f / (1.0f + alph));
 	const float sigma                       = gain * gain / fan_in;
@@ -99,7 +100,7 @@ kaiming_uniform(
 	Tensor<float, Bp>& weight,
 	const float        alph = 0.0f)
 {
-	const std::vector<std::uint32_t>& shape = weight.shape();
+	const std::vector<std::uint32_t>& shape = weight.dims();
 	const auto [fan_in, _]                  = calculate_fan_in_and_fan_out(shape);
 	const float gain                        = std::sqrt(2.0f / (1.0f + alph));
 	const float sigma                       = std::sqrt(3.0f / fan_in);

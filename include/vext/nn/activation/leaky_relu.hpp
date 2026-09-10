@@ -2,6 +2,7 @@
 #define __VEXT_NN_ACTIVATION_LEAKY_RELU_HPP__
 
 #include <vext/nn/module.hpp>
+#include <vext/ops.hpp>
 
 namespace vext::nn::activation
 {
@@ -20,12 +21,12 @@ public:
 	{
 		if constexpr(Mp == Mutation::IN_PLACE)
 			{
-				x.leaky_relu(a);
+				ops::unary<UnaryOp::LEAKY_RELU>(x, a);
 			}
 		else if constexpr(Mp == Mutation::COPY)
 			{
 				Tensor<float, Bp> copy(x);
-				copy.leaky_relu(a);
+				ops::unary<UnaryOp::LEAKY_RELU>(copy, a);
 
 				return copy;
 			}

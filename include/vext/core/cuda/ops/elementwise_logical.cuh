@@ -1,11 +1,12 @@
-#ifndef __VEXT_CORE_CUDA_OPERATIONS_ELEMENTWISE_LOGIC_CUH__
-#define __VEXT_CORE_CUDA_OPERATIONS_ELEMENTWISE_LOGIC_CUH__
+#ifndef __VEXT_CORE_CUDA_OPS_ELEMENTWISE_LOGIC_CUH__
+#define __VEXT_CORE_CUDA_OPS_ELEMENTWISE_LOGIC_CUH__
 
 #include <iostream>
 
 #include <cuda_runtime.h>
 
 #include <vext/core/type.hpp>
+#include <vext/type.hpp>
 
 #define CUDA_CHECK(call)                                                                                            \
 	do                                                                                                               \
@@ -19,10 +20,10 @@
 		}                                                                                                             \
 	while(0)
 
-namespace vext::core::cuda::operations::kernel
+namespace vext::core::cuda::ops::kernel
 {
 
-template <LogicOperation Kp, typename T1, typename T2>
+template <LogicOp Kp, typename T1, typename T2>
 __global__ void
 logical(
 	std::uint8_t* __restrict__ out,
@@ -35,27 +36,27 @@ logical(
 
 	for(std::uint32_t i = tid; i < N; i += stride)
 		{
-			if constexpr(Kp == LogicOperation::EQUAL)
+			if constexpr(Kp == LogicOp::EQUAL)
 				{
 					out[i] = a[i] == b[i];
 				}
-			else if constexpr(Kp == LogicOperation::NOT_EQUAL)
+			else if constexpr(Kp == LogicOp::NOT_EQUAL)
 				{
 					out[i] = a[i] != b[i];
 				}
-			else if constexpr(Kp == LogicOperation::LESS)
+			else if constexpr(Kp == LogicOp::LESS)
 				{
 					out[i] = a[i] < b[i];
 				}
-			else if constexpr(Kp == LogicOperation::LESS_EQUAL)
+			else if constexpr(Kp == LogicOp::LESS_EQUAL)
 				{
 					out[i] = a[i] <= b[i];
 				}
-			else if constexpr(Kp == LogicOperation::GREATER)
+			else if constexpr(Kp == LogicOp::GREATER)
 				{
 					out[i] = a[i] > b[i];
 				}
-			else if constexpr(Kp == LogicOperation::GREATER_EQUAL)
+			else if constexpr(Kp == LogicOp::GREATER_EQUAL)
 				{
 					out[i] = a[i] >= b[i];
 				}
@@ -64,10 +65,10 @@ logical(
 
 }
 
-namespace vext::core::cuda::operations
+namespace vext::core::cuda::ops
 {
 
-template <LogicOperation Kp, typename T1, typename T2>
+template <LogicOp Kp, typename T1, typename T2>
 void
 logical(
 	std::uint8_t*       out,
@@ -80,7 +81,7 @@ logical(
 
 	if(a == b)
 		{
-			if constexpr(Kp == LogicOperation::LESS || Kp == LogicOperation::GREATER)
+			if constexpr(Kp == LogicOp::LESS || Kp == LogicOp::GREATER)
 				{
 					CUDA_CHECK(cudaMemset(out, 0, N * sizeof(std::uint8_t)));
 				}
@@ -91,7 +92,7 @@ logical(
 		}
 	else
 		{
-			kernel::logical<Kp, T1, T2><<<grid_size, block_size>>>(out, a, b, N);
+			kernel::logical<Kp><<<grid_size, block_size>>>(out, a, b, N);
 			CUDA_CHECK(cudaGetLastError());
 		}
 }

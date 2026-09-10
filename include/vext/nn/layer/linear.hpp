@@ -1,8 +1,9 @@
 #ifndef __VEXT_LINEAR_HPP__
 #define __VEXT_LINEAR_HPP__
 
+#include <vext/nn/init.hpp>
 #include <vext/nn/module.hpp>
-#include <vext/nn/utils/init.hpp>
+#include <vext/ops.hpp>
 
 namespace vext::nn::layer
 {
@@ -21,8 +22,8 @@ public:
 		  __weight(input, hidden_dim),
 		  __bias(hidden_dim)
 	{
-		utils::kaiming_uniform(__weight, std::sqrt(5.0f));
-		utils::kaiming_uniform(__bias);
+		kaiming_uniform(__weight, std::sqrt(5.0f));
+		kaiming_uniform(__bias);
 
 		assign_parameter(&__weight);
 		assign_parameter(&__bias);
@@ -33,7 +34,7 @@ public:
 	operator()(
 		const Tensor<float, Bp>& x) const
 	{
-		return x.matmul(__weight) + __bias;
+		return ops::binary<BinaryOp::ADD>(ops::matmul(x, __weight), __bias);
 	}
 
 private:

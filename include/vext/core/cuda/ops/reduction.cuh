@@ -10,6 +10,7 @@
 #include <cuda_runtime.h>
 
 #include <vext/core/type.hpp>
+#include <vext/type.hpp>
 
 #define CUDA_CHECK(call)                                                                                            \
 	do                                                                                                               \
@@ -23,7 +24,7 @@
 		}                                                                                                             \
 	while(0)
 
-namespace vext::core::cuda::operations::kernel
+namespace vext::core::cuda::ops::kernel
 {
 
 struct ReductionMeta
@@ -56,7 +57,7 @@ axis_offset(
 
 // clang-format on
 
-template <ReductionOperation Kp, typename T1, typename T2>
+template <ReductionOp Kp, typename T1, typename T2>
 __global__ void
 reduce(
 	T1* __restrict__ out,
@@ -70,15 +71,15 @@ reduce(
 		{
 			T1 accumulator = 0;
 
-			if constexpr(Kp == ReductionOperation::PROD)
+			if constexpr(Kp == ReductionOp::PROD)
 				{
 					accumulator = 1;
 				}
-			else if constexpr(Kp == ReductionOperation::MIN)
+			else if constexpr(Kp == ReductionOp::MIN)
 				{
 					accumulator = ::cuda::std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == ReductionOperation::MAX)
+			else if constexpr(Kp == ReductionOp::MAX)
 				{
 					accumulator = ::cuda::std::numeric_limits<T1>::lowest();
 				}
@@ -89,23 +90,23 @@ reduce(
 				{
 					const std::uint64_t reduce_offset = axis_offset(j, reduce_meta);
 
-					if constexpr(Kp == ReductionOperation::PROD)
+					if constexpr(Kp == ReductionOp::PROD)
 						{
 							accumulator *= static_cast<T1>(src[keep_offset + reduce_offset]);
 						}
-					else if constexpr(Kp == ReductionOperation::MIN)
+					else if constexpr(Kp == ReductionOp::MIN)
 						{
 							accumulator = ::cuda::std::min(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
-					else if constexpr(Kp == ReductionOperation::MAX)
+					else if constexpr(Kp == ReductionOp::MAX)
 						{
 							accumulator = ::cuda::std::max(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
-					else if constexpr(Kp == ReductionOperation::L2_NORM)
+					else if constexpr(Kp == ReductionOp::L2_NORM)
 						{
 							accumulator += src[keep_offset + reduce_offset] * src[keep_offset + reduce_offset];
 						}
-					else if constexpr(Kp == ReductionOperation::VAR || Kp == ReductionOperation::STD)
+					else if constexpr(Kp == ReductionOp::VAR || Kp == ReductionOp::STD)
 						{
 							const float diff = src[keep_offset + reduce_offset] - out[i];
 							accumulator += diff * diff;
@@ -120,15 +121,15 @@ reduce(
 				{
 					const T2 shuffled = __shfl_down_sync(0xffffffff, accumulator, offset);
 
-					if constexpr(Kp == ReductionOperation::PROD)
+					if constexpr(Kp == ReductionOp::PROD)
 						{
 							accumulator *= shuffled;
 						}
-					else if constexpr(Kp == ReductionOperation::MIN)
+					else if constexpr(Kp == ReductionOp::MIN)
 						{
 							accumulator = (shuffled < accumulator) ? shuffled : accumulator;
 						}
-					else if constexpr(Kp == ReductionOperation::MAX)
+					else if constexpr(Kp == ReductionOp::MAX)
 						{
 							accumulator = (shuffled > accumulator) ? shuffled : accumulator;
 						}
@@ -152,15 +153,15 @@ reduce(
 
 			T2 block_accumulate = 0;
 
-			if constexpr(Kp == ReductionOperation::PROD)
+			if constexpr(Kp == ReductionOp::PROD)
 				{
 					block_accumulate = 1;
 				}
-			else if constexpr(Kp == ReductionOperation::MIN)
+			else if constexpr(Kp == ReductionOp::MIN)
 				{
 					block_accumulate = ::cuda::std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == ReductionOperation::MAX)
+			else if constexpr(Kp == ReductionOp::MAX)
 				{
 					block_accumulate = ::cuda::std::numeric_limits<T1>::lowest();
 				}
@@ -178,15 +179,15 @@ reduce(
 						{
 							const T2 shuffled = __shfl_down_sync(0xffffffff, block_accumulate, offset);
 
-							if constexpr(Kp == ReductionOperation::PROD)
+							if constexpr(Kp == ReductionOp::PROD)
 								{
 									block_accumulate *= shuffled;
 								}
-							else if constexpr(Kp == ReductionOperation::MIN)
+							else if constexpr(Kp == ReductionOp::MIN)
 								{
 									block_accumulate = (shuffled < block_accumulate) ? shuffled : block_accumulate;
 								}
-							else if constexpr(Kp == ReductionOperation::MAX)
+							else if constexpr(Kp == ReductionOp::MAX)
 								{
 									block_accumulate = (shuffled > block_accumulate) ? shuffled : block_accumulate;
 								}
@@ -198,17 +199,17 @@ reduce(
 
 					if(lane == 0)
 						{
-							if constexpr(Kp == ReductionOperation::MEAN || Kp == ReductionOperation::VAR)
+							if constexpr(Kp == ReductionOp::MEAN || Kp == ReductionOp::VAR)
 								{
 									out[i] = block_accumulate / M;
 								}
-							else if constexpr(Kp == ReductionOperation::STD)
+							else if constexpr(Kp == ReductionOp::STD)
 								{
 									out[i] = ::cuda::std::sqrt(block_accumulate / M);
 								}
-							else if constexpr(Kp == ReductionOperation::L2_NORM)
+							else if constexpr(Kp == ReductionOp::L2_NORM)
 								{
-                                    out[i] = std::sqrt(block_accumulate);
+									out[i] = std::sqrt(block_accumulate);
 								}
 							else
 								{
@@ -223,10 +224,10 @@ reduce(
 
 }
 
-namespace vext::core::cuda::operations
+namespace vext::core::cuda::ops
 {
 
-template <ReductionOperation Kp, typename T1, typename T2>
+template <ReductionOp Kp, typename T1, typename T2>
 void
 reduce(
 	T1*                               out,
@@ -257,17 +258,17 @@ reduce(
 			reduce_meta.strides[i] = reduce_strides[i];
 		}
 
-	if constexpr(Kp == ReductionOperation::VAR || Kp == ReductionOperation::STD)
+	if constexpr(Kp == ReductionOp::VAR || Kp == ReductionOp::STD)
 		{
-			kernel::reduce<ReductionOperation::MEAN, T1, T2><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta);
+			kernel::reduce<ReductionOp::MEAN><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta);
 			CUDA_CHECK(cudaGetLastError());
 
-			kernel::reduce<Kp, T1, T2><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta);
+			kernel::reduce<Kp><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta);
 			CUDA_CHECK(cudaGetLastError());
 		}
 	else
 		{
-			kernel::reduce<Kp, T1, T2><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta);
+			kernel::reduce<Kp><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta);
 			CUDA_CHECK(cudaGetLastError());
 		}
 }

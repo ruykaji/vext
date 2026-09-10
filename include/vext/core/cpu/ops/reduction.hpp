@@ -1,16 +1,17 @@
-#ifndef __VEXT_CORE_CPU_OPERATIONS_REDUCTION_HPP__
-#define __VEXT_CORE_CPU_OPERATIONS_REDUCTION_HPP__
+#ifndef __VEXT_CORE_CPU_OPS_REDUCTION_HPP__
+#define __VEXT_CORE_CPU_OPS_REDUCTION_HPP__
 
 #include <cmath>
 #include <limits>
 #include <vector>
 
 #include <vext/core/type.hpp>
+#include <vext/type.hpp>
 
-namespace vext::core::cpu::operations
+namespace vext::core::cpu::ops
 {
 
-template <ReductionOperation Kp, typename T1, typename T2>
+template <ReductionOp Kp, typename T1, typename T2>
 void
 reduce(
 	T1* __restrict__ out,
@@ -34,15 +35,15 @@ reduce(
 		{
 			T1 accumulator = 0;
 
-			if constexpr(Kp == ReductionOperation::PROD)
+			if constexpr(Kp == ReductionOp::PROD)
 				{
 					accumulator = 1;
 				}
-			else if constexpr(Kp == ReductionOperation::MIN)
+			else if constexpr(Kp == ReductionOp::MIN)
 				{
 					accumulator = std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == ReductionOperation::MAX)
+			else if constexpr(Kp == ReductionOp::MAX)
 				{
 					accumulator = std::numeric_limits<T1>::lowest();
 				}
@@ -56,19 +57,19 @@ reduce(
 
 			for(std::uint32_t j = 0; j < M; ++j)
 				{
-					if constexpr(Kp == ReductionOperation::PROD)
+					if constexpr(Kp == ReductionOp::PROD)
 						{
 							accumulator *= static_cast<T1>(src[keep_offset + reduce_offset]);
 						}
-					else if constexpr(Kp == ReductionOperation::MIN)
+					else if constexpr(Kp == ReductionOp::MIN)
 						{
 							accumulator = std::min(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
-					else if constexpr(Kp == ReductionOperation::MAX)
+					else if constexpr(Kp == ReductionOp::MAX)
 						{
 							accumulator = std::max(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
-					else if constexpr(Kp == ReductionOperation::L2_NORM)
+					else if constexpr(Kp == ReductionOp::L2_NORM)
 						{
 							accumulator += src[keep_offset + reduce_offset] * src[keep_offset + reduce_offset];
 						}
@@ -97,7 +98,7 @@ reduce(
 						}
 				}
 
-			if constexpr(Kp == ReductionOperation::VAR || Kp == ReductionOperation::STD)
+			if constexpr(Kp == ReductionOp::VAR || Kp == ReductionOp::STD)
 				{
 					const float mean       = static_cast<float>(accumulator) / M;
 					float       dispersion = 0.0f;
@@ -134,7 +135,7 @@ reduce(
 								}
 						}
 
-					if constexpr(Kp == ReductionOperation::VAR)
+					if constexpr(Kp == ReductionOp::VAR)
 						{
 							out[i] = dispersion / M;
 						}
@@ -143,11 +144,11 @@ reduce(
 							out[i] = std::sqrt(dispersion / M);
 						}
 				}
-			else if constexpr(Kp == ReductionOperation::MEAN)
+			else if constexpr(Kp == ReductionOp::MEAN)
 				{
 					out[i] = accumulator / M;
 				}
-			else if constexpr(Kp == ReductionOperation::L2_NORM)
+			else if constexpr(Kp == ReductionOp::L2_NORM)
 				{
 					out[i] = std::sqrt(accumulator);
 				}

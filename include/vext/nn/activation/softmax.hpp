@@ -2,6 +2,7 @@
 #define __VEXT_NN_ACTIVATION_SOFTMAX_HPP__
 
 #include <vext/nn/module.hpp>
+#include <vext/ops.hpp>
 
 namespace vext::nn::activation
 {
@@ -19,12 +20,12 @@ public:
 	{
 		if constexpr(Mp == Mutation::IN_PLACE)
 			{
-				x.softmax();
+				ops::unary<UnaryOp::SOFTMAX>(x);
 			}
 		else if constexpr(Mp == Mutation::COPY)
 			{
 				Tensor<float, Bp> copy(x);
-				copy.softmax();
+				ops::unary<UnaryOp::SOFTMAX>(copy);
 
 				return copy;
 			}

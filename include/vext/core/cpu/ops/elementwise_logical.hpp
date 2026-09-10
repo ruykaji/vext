@@ -1,14 +1,15 @@
-#ifndef __VEXT_CORE_CPU_OPERATIONS_ELEMENTWISE_LOGIC_HPP__
-#define __VEXT_CORE_CPU_OPERATIONS_ELEMENTWISE_LOGIC_HPP__
+#ifndef __VEXT_CORE_CPU_OPS_ELEMENTWISE_LOGIC_HPP__
+#define __VEXT_CORE_CPU_OPS_ELEMENTWISE_LOGIC_HPP__
 
 #include <cstring>
 
 #include <vext/core/type.hpp>
+#include <vext/type.hpp>
 
-namespace vext::core::cpu::operations
+namespace vext::core::cpu::ops
 {
 
-template <LogicOperation Kp, typename T1, typename T2>
+template <LogicOp Kp, typename T1, typename T2>
 static void
 logical(
 	std::uint8_t* __restrict__ out,
@@ -18,7 +19,7 @@ logical(
 {
 	if(a == b)
 		{
-			if constexpr(Kp == LogicOperation::LESS || Kp == LogicOperation::GREATER)
+			if constexpr(Kp == LogicOp::LESS || Kp == LogicOp::GREATER)
 				{
 					std::memset(out, 0, N * sizeof(std::uint8_t));
 				}
@@ -31,27 +32,27 @@ logical(
 		{
 			for(std::uint32_t i = 0; i < N; ++i)
 				{
-					if constexpr(Kp == LogicOperation::EQUAL)
+					if constexpr(Kp == LogicOp::EQUAL)
 						{
 							out[i] = a[i] == b[i];
 						}
-					else if constexpr(Kp == LogicOperation::NOT_EQUAL)
+					else if constexpr(Kp == LogicOp::NOT_EQUAL)
 						{
 							out[i] = a[i] != b[i];
 						}
-					else if constexpr(Kp == LogicOperation::LESS)
+					else if constexpr(Kp == LogicOp::LESS)
 						{
 							out[i] = a[i] < b[i];
 						}
-					else if constexpr(Kp == LogicOperation::LESS_EQUAL)
+					else if constexpr(Kp == LogicOp::LESS_EQUAL)
 						{
 							out[i] = a[i] <= b[i];
 						}
-					else if constexpr(Kp == LogicOperation::GREATER)
+					else if constexpr(Kp == LogicOp::GREATER)
 						{
 							out[i] = a[i] > b[i];
 						}
-					else if constexpr(Kp == LogicOperation::GREATER_EQUAL)
+					else if constexpr(Kp == LogicOp::GREATER_EQUAL)
 						{
 							out[i] = a[i] >= b[i];
 						}

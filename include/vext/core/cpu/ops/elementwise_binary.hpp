@@ -1,65 +1,66 @@
-#ifndef __VEXT_CORE_CPU_OPERATIONS_ELEMENTWISE_BINARY_HPP__
-#define __VEXT_CORE_CPU_OPERATIONS_ELEMENTWISE_BINARY_HPP__
+#ifndef __VEXT_CORE_CPU_OPS_ELEMENTWISE_BINARY_HPP__
+#define __VEXT_CORE_CPU_OPS_ELEMENTWISE_BINARY_HPP__
 
 #include <cmath>
 #include <vector>
 
 #include <vext/core/type.hpp>
+#include <vext/type.hpp>
 
-namespace vext::core::cpu::operations
+namespace vext::core::cpu::ops
 {
 
-template <BinaryOperation Kp, typename T1, typename T2>
+template <BinaryOp Kp, typename T1, typename T2, typename T3>
 static void
 binary(
-	std::common_type_t<T1, T2>* out,
-	const T1*                   a,
-	const T2* __restrict__ b,
+	T1*       out,
+	const T2* a,
+	const T3* __restrict__ b,
 	const std::uint32_t N)
 {
 	for(std::uint32_t i = 0; i < N; ++i)
 		{
-			if constexpr(Kp == BinaryOperation::ADD)
+			if constexpr(Kp == BinaryOp::ADD)
 				{
 					out[i] = a[i] + b[i];
 				}
-			else if constexpr(Kp == BinaryOperation::SUB)
+			else if constexpr(Kp == BinaryOp::SUB)
 				{
 					out[i] = a[i] - b[i];
 				}
-			else if constexpr(Kp == BinaryOperation::MUL)
+			else if constexpr(Kp == BinaryOp::MUL)
 				{
 					out[i] = a[i] * b[i];
 				}
-			else if constexpr(Kp == BinaryOperation::DIV)
+			else if constexpr(Kp == BinaryOp::DIV)
 				{
 					out[i] = a[i] / b[i];
 				}
-			else if constexpr(Kp == BinaryOperation::POW)
+			else if constexpr(Kp == BinaryOp::POW)
 				{
 					out[i] = std::pow(a[i], b[i]);
 				}
-			else if constexpr(Kp == BinaryOperation::MIN)
+			else if constexpr(Kp == BinaryOp::MIN)
 				{
 					out[i] = std::min(a[i], b[i]);
 				}
-			else if constexpr(Kp == BinaryOperation::MAX)
+			else if constexpr(Kp == BinaryOp::MAX)
 				{
 					out[i] = std::max(a[i], b[i]);
 				}
-			else if constexpr(Kp == BinaryOperation::PRELU)
+			else if constexpr(Kp == BinaryOp::PRELU)
 				{
 					out[i] = std::max<T1>(0, a[i]) + b[i] * std::min<T1>(0, a[i]);
 				}
 		}
 }
 
-template <BinaryOperation Kp, typename T1, typename T2>
+template <BinaryOp Kp, typename T1, typename T2, typename T3>
 static void
 binary_with_broadcast(
-	std::common_type_t<T1, T2>*       out,
-	const T1*                         a,
-	const T2*                         b,
+	T1*                               out,
+	const T2*                         a,
+	const T3*                         b,
 	const std::uint32_t               N,
 	const std::vector<std::uint32_t>& dims,
 	const std::vector<std::uint32_t>& strides)
@@ -73,42 +74,42 @@ binary_with_broadcast(
 
 	for(std::uint32_t i = 0; i < N; ++i)
 		{
-			if constexpr(Kp == BinaryOperation::ADD)
+			if constexpr(Kp == BinaryOp::ADD)
 				{
 
 					out[i] = a[i] + b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOperation::SUB)
+			else if constexpr(Kp == BinaryOp::SUB)
 				{
 
 					out[i] = a[i] - b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOperation::MUL)
+			else if constexpr(Kp == BinaryOp::MUL)
 				{
 
 					out[i] = a[i] * b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOperation::DIV)
+			else if constexpr(Kp == BinaryOp::DIV)
 				{
 
 					out[i] = a[i] / b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOperation::POW)
+			else if constexpr(Kp == BinaryOp::POW)
 				{
 
 					out[i] = std::pow(a[i], b[b_offset]);
 				}
-			else if constexpr(Kp == BinaryOperation::MIN)
+			else if constexpr(Kp == BinaryOp::MIN)
 				{
 
 					out[i] = std::min(a[i], b[b_offset]);
 				}
-			else if constexpr(Kp == BinaryOperation::MAX)
+			else if constexpr(Kp == BinaryOp::MAX)
 				{
 
 					out[i] = std::max(a[i], b[b_offset]);
 				}
-			else if constexpr(Kp == BinaryOperation::PRELU)
+			else if constexpr(Kp == BinaryOp::PRELU)
 				{
 					out[i] = std::max<T1>(0, a[i]) + b[b_offset] * std::min<T1>(0, a[i]);
 				}

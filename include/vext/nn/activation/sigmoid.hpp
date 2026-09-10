@@ -2,6 +2,7 @@
 #define __VEXT_NN_ACTIVATION_SIGMOID_HPP__
 
 #include <vext/nn/module.hpp>
+#include <vext/ops.hpp>
 
 namespace vext::nn::activation
 {
@@ -19,14 +20,14 @@ public:
 	{
 		if constexpr(Mp == Mutation::IN_PLACE)
 			{
-				x.sigmoid();
+				ops::unary<UnaryOp::SIGMOID>(x);
 			}
 		else if constexpr(Mp == Mutation::COPY)
 			{
 				Tensor<float, Bp> copy(x);
-				copy.sigmoid();
+				ops::unary<UnaryOp::SIGMOID>(copy);
 
-                return copy;
+				return copy;
 			}
 	}
 };

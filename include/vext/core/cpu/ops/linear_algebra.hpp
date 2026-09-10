@@ -1,20 +1,21 @@
-#ifndef __VEXT_CORE_CPU_OPERATIONS_LINEAR_ALGEBRA_HPP__
-#define __VEXT_CORE_CPU_OPERATIONS_LINEAR_ALGEBRA_HPP__
+#ifndef __VEXT_CORE_CPU_OPS_LINEAR_ALGEBRA_HPP__
+#define __VEXT_CORE_CPU_OPS_LINEAR_ALGEBRA_HPP__
 
 #include <cmath>
 #include <vector>
 
 #include <vext/core/type.hpp>
+#include <vext/type.hpp>
 
-namespace vext::core::cpu::operations
+namespace vext::core::cpu::ops
 {
 
-template <typename T1, typename T2>
+template <typename T1, typename T2, typename T3>
 void
 matmul(
-	std::common_type_t<T1, T2>* __restrict__ out,
-	const T1* __restrict__ a,
-	const T2* __restrict__ b,
+	T1* __restrict__ out,
+	const T2* __restrict__ a,
+	const T3* __restrict__ b,
 	const std::uint32_t M,
 	const std::uint32_t P,
 	const std::uint32_t N)

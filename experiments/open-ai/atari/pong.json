@@ -1,0 +1,24 @@
+{
+  "backend": "atari",
+  "env_id": "ALE/Pong-v5",
+  "environment": {
+    "noop_max": 30,
+    "frame_skip": 4,
+    "screen_size": 42,
+    "frame_stack": 4,
+    "grayscale_obs": true,
+    "terminal_on_life_loss": false,
+    "repeat_action_probability": 0.0
+  },
+  "seed": 7,
+  "evaluation_episodes": 5,
+  "policy": {"hidden_sizes": [64]},
+  "training": {
+    "iterations": 1000,
+    "population_size": 256,
+    "noise_std": 0.02,
+    "observation_update_probability": 0.01,
+    "learning_rate": 0.01,
+    "l2_coefficient": 0.005
+  }
+}

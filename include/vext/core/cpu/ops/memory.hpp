@@ -1,12 +1,12 @@
-#ifndef __VEXT_CORE_CUDA_OPERATIONS_MEMORY_HPP__
-#define __VEXT_CORE_CUDA_OPERATIONS_MEMORY_HPP__
+#ifndef __VEXT_CORE_CUDA_OPS_MEMORY_HPP__
+#define __VEXT_CORE_CUDA_OPS_MEMORY_HPP__
 
 #include <cstdint>
 #include <cstring>
 
 #include <vext/type.hpp>
 
-namespace vext::core::cpu::operations
+namespace vext::core::cpu::ops
 {
 
 template <typename Tp>

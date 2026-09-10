@@ -6,6 +6,7 @@
 #include <cuda_runtime.h>
 
 #include <vext/core/type.hpp>
+#include <vext/type.hpp>
 
 #define CUDA_CHECK(call)                                                                                            \
 	do                                                                                                               \
@@ -19,15 +20,15 @@
 		}                                                                                                             \
 	while(0)
 
-namespace vext::core::cuda::operations::kernel
+namespace vext::core::cuda::ops::kernel
 {
 
-template <typename T1, typename T2>
+template <typename T1, typename T2, typename T3>
 __global__ void
 matmul(
-	std::common_type_t<T1, T2>* __restrict__ out,
-	const T1* __restrict__ a,
-	const T2* __restrict__ b,
+	T1* __restrict__ out,
+	const T2* __restrict__ a,
+	const T3* __restrict__ b,
 	const std::uint32_t M,
 	const std::uint32_t P,
 	const std::uint32_t N)
@@ -68,15 +69,15 @@ matmul(
 
 }
 
-namespace vext::core::cuda::operations
+namespace vext::core::cuda::ops
 {
 
-template <typename T1, typename T2>
+template <typename T1, typename T2, typename T3>
 void
 matmul(
-	std::common_type_t<T1, T2>* out,
-	const T1*                   a,
-	const T2*                   b,
+	T1* out,
+	const T2*                   a,
+	const T3*                   b,
 	const std::uint32_t         M,
 	const std::uint32_t         P,
 	const std::uint32_t         N)
@@ -84,7 +85,7 @@ matmul(
 	const dim3 block(16, 16);
 	const dim3 grid((N + 16 - 1) / 16, (M + 16 - 1) / 16);
 
-	kernel::matmul<T1, T2><<<grid, block>>>(out, a, b, M, P, N);
+	kernel::matmul<<<grid, block>>>(out, a, b, M, P, N);
 	CUDA_CHECK(cudaGetLastError());
 }
 

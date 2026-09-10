@@ -5,7 +5,6 @@ option(VEXT_ENABLE_CUDA "Enable cuda" ON)
 option(VEXT_BUILD_TEST  "Build Test"  ON)
 
 set(VEXT_CUDA OFF)
-set(OPM OFF)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
@@ -37,14 +36,6 @@ if(VEXT_ENABLE_CUDA)
     endif()
 endif()
 
-find_package(OpenMP)
-
-if(OpenMP_FOUND)
-    set(OPM ON)
-else()
-    message(STATUS "OpenMP was not found. Building CPU without parallelization.")
-endif()
-
 add_library(vext
     INTERFACE)
 
@@ -74,25 +65,14 @@ if(VEXT_CUDA)
     )
 endif()
 
-if(OPM)
-    target_link_libraries(vext
-        INTERFACE
-            OpenMP::OpenMP_CXX
-    )
-endif()
-
 if(VEXT_BUILD_TEST)
-    find_package(GTest)
+    find_package(GTest REQUIRED)
     find_package(benchmark REQUIRED)
 
-    if(GTEST_FOUND)
-        enable_testing()
+    enable_testing()
 
-        include(GoogleTest)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/test)
-    else()
-        message(WARNING "Failed to find gtest package")
-    endif()
+    include(GoogleTest)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/test)
 endif()
 
 message(STATUS "===================================================")

@@ -1,0 +1,17 @@
+{
+  "backend": "mujoco",
+  "env_id": "Humanoid-v5",
+  "environment": {},
+  "seed": 7,
+  "evaluation_episodes": 5,
+  "policy": {"hidden_sizes": [256, 256]},
+  "training": {
+    "iterations": 1000,
+    "population_size": 256,
+    "noise_std": 0.02,
+    "action_noise_std": 0.01,
+    "observation_update_probability": 0.01,
+    "learning_rate": 0.01,
+    "l2_coefficient": 0.005
+  }
+}

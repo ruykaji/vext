@@ -13,7 +13,7 @@
 #include <vext/nn/activation/softmax.hpp>
 #include <vext/nn/layer/linear.hpp>
 #include <vext/nn/module.hpp>
-#include <vext/nn/utils/init.hpp>
+#include <vext/nn/init.hpp>
 
 namespace
 {
@@ -108,12 +108,12 @@ TEST(NnCuda, ModuleIteratesRegisteredParameters)
 	vext::nn::Module<vext::Backend::CUDA>::iterator it = module.begin();
 
 	ASSERT_NE(it, module.end());
-	EXPECT_EQ(it->shape(), (std::vector<std::uint32_t>{ 2 }));
+	EXPECT_EQ(it->dims(), (std::vector<std::uint32_t>{ 2 }));
 
 	++it;
 
 	ASSERT_NE(it, module.end());
-	EXPECT_EQ(it->shape(), (std::vector<std::uint32_t>{ 2, 2 }));
+	EXPECT_EQ(it->dims(), (std::vector<std::uint32_t>{ 2, 2 }));
 
 	++it;
 	EXPECT_EQ(it, module.end());
@@ -160,8 +160,8 @@ TEST(NnCuda, InitializersWriteFiniteCudaTensorValues)
 	vext::Tensor<float, vext::Backend::CUDA> uniform_weight(4, 8);
 	vext::Tensor<float, vext::Backend::CUDA> normal_weight(4, 8);
 
-	vext::nn::utils::xavier_uniform(uniform_weight);
-	vext::nn::utils::kaiming_normal(normal_weight, 0.25f);
+	vext::nn::xavier_uniform(uniform_weight);
+	vext::nn::kaiming_normal(normal_weight, 0.25f);
 
 	const float sigma = 2.0f / (8.0f + 4.0f);
 	const float bound = std::sqrt(3.0f * sigma);
@@ -183,18 +183,18 @@ TEST(NnCuda, LinearRegistersParametersAndRunsForward)
 	vext::nn::Module<vext::Backend::CUDA>::iterator it = layer.begin();
 
 	ASSERT_NE(it, layer.end());
-	EXPECT_EQ(it->shape(), (std::vector<std::uint32_t>{ 3, 4 }));
+	EXPECT_EQ(it->dims(), (std::vector<std::uint32_t>{ 3, 4 }));
 	expect_cuda_tensor_finite(*it);
 
 	++it;
 
 	ASSERT_NE(it, layer.end());
-	EXPECT_EQ(it->shape(), (std::vector<std::uint32_t>{ 4 }));
+	EXPECT_EQ(it->dims(), (std::vector<std::uint32_t>{ 4 }));
 	expect_cuda_tensor_finite(*it);
 
 	const vext::Tensor<float, vext::Backend::CUDA> input({ { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } });
 	const vext::Tensor<float, vext::Backend::CUDA> output = layer(input);
 
-	EXPECT_EQ(output.shape(), (std::vector<std::uint32_t>{ 2, 4 }));
+	EXPECT_EQ(output.dims(), (std::vector<std::uint32_t>{ 2, 4 }));
 	expect_cuda_tensor_finite(output);
 }

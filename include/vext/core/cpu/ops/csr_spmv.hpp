@@ -1,15 +1,16 @@
-#ifndef __VEXT_CORE_CPU_OPERATIONS_CSR_SPMV_HPP__
-#define __VEXT_CORE_CPU_OPERATIONS_CSR_SPMV_HPP__
+#ifndef __VEXT_CORE_CPU_OPS_CSR_SPMV_HPP__
+#define __VEXT_CORE_CPU_OPS_CSR_SPMV_HPP__
 
 #include <algorithm>
 #include <cmath>
 
 #include <vext/core/type.hpp>
+#include <vext/type.hpp>
 
-namespace vext::core::cpu::operations
+namespace vext::core::cpu::ops
 {
 
-template <CSRSpMVOperation Kp, typename T1, typename T2, typename T3>
+template <CSRSpMVOp Kp, typename T1, typename T2, typename T3>
 void
 csr_spmv(
 	T1* __restrict__ y,
@@ -19,9 +20,6 @@ csr_spmv(
 	const T3* __restrict__ x,
 	const std::uint32_t N)
 {
-	#ifdef _OPENMP
-		#pragma omp parallel for schedule(static)
-	#endif
 	for(std::uint32_t i = 0; i < N; ++i)
 		{
 			const std::uint32_t start = head[i];
@@ -29,15 +27,15 @@ csr_spmv(
 
 			T1 accumulator = 0;
 
-			if constexpr(Kp == CSRSpMVOperation::PROD)
+			if constexpr(Kp == CSRSpMVOp::PROD)
 				{
 					accumulator = 1;
 				}
-			else if constexpr(Kp == CSRSpMVOperation::MIN)
+			else if constexpr(Kp == CSRSpMVOp::MIN)
 				{
 					accumulator = std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == CSRSpMVOperation::MAX)
+			else if constexpr(Kp == CSRSpMVOp::MAX)
 				{
 					accumulator = std::numeric_limits<T1>::lowest();
 				}
@@ -46,15 +44,15 @@ csr_spmv(
 				{
 					const T1 prod = A[h] * x[tail[h]];
 
-					if constexpr(Kp == CSRSpMVOperation::PROD)
+					if constexpr(Kp == CSRSpMVOp::PROD)
 						{
 							accumulator *= prod;
 						}
-					else if constexpr(Kp == CSRSpMVOperation::MIN)
+					else if constexpr(Kp == CSRSpMVOp::MIN)
 						{
 							accumulator = std::min<T1>(accumulator, prod);
 						}
-					else if constexpr(Kp == CSRSpMVOperation::MAX)
+					else if constexpr(Kp == CSRSpMVOp::MAX)
 						{
 							accumulator = std::max<T1>(accumulator, prod);
 						}
@@ -64,12 +62,12 @@ csr_spmv(
 						}
 				}
 
-			if constexpr(Kp == CSRSpMVOperation::MEAN)
+			if constexpr(Kp == CSRSpMVOp::MEAN)
 				{
 					const float scale = 1.0f / static_cast<float>(end - start);
 					y[i]              = accumulator * scale;
 				}
-			else if constexpr(Kp == CSRSpMVOperation::VAR || Kp == CSRSpMVOperation::STD)
+			else if constexpr(Kp == CSRSpMVOp::VAR || Kp == CSRSpMVOp::STD)
 				{
 					const float scale = 1.0f / static_cast<float>(end - start);
 					const float mean  = accumulator * scale;
@@ -84,7 +82,7 @@ csr_spmv(
 							dispertion += diff * diff;
 						}
 
-					if constexpr(Kp == CSRSpMVOperation::VAR)
+					if constexpr(Kp == CSRSpMVOp::VAR)
 						{
 							y[i] = dispertion * scale;
 						}
