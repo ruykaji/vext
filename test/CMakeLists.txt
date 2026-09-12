@@ -1,34 +1,38 @@
-include("add_gtest")
+if(VEXT_BUILD_TESTS)
+	include(add_gtest)
 
-add_gtest(test_ops_cpu cpu/ops.cpp vext)
-add_gtest(test_tensor_cpu cpu/tensor.cpp vext)
-add_gtest(test_nn_cpu cpu/nn.cpp vext)
+	add_gtest(test_ops_cpu cpu/ops.cpp vext::cpu)
+	add_gtest(test_tensor_cpu cpu/tensor.cpp vext::cpu)
+	add_gtest(test_nn_cpu cpu/nn.cpp vext::cpu)
 
-target_compile_options(test_ops_cpu PRIVATE -UVEXT_CUDA)
-target_compile_options(test_tensor_cpu PRIVATE -UVEXT_CUDA)
-target_compile_options(test_nn_cpu PRIVATE -UVEXT_CUDA)
+	if(TARGET vext::cuda)
+		add_gtest(test_ops_cuda cuda/ops.cu vext::cuda)
+		add_gtest(test_tensor_cuda cuda/tensor.cu vext::cuda)
+		add_gtest(test_nn_cuda cuda/nn.cu vext::cuda)
 
-if(VEXT_CUDA)
-    add_gtest(test_ops_cuda cuda/ops.cu vext)
-    set_target_properties(test_ops_cuda PROPERTIES CUDA_ARCHITECTURES native)
-
-    add_gtest(test_tensor_cuda cuda/tensor.cu vext)
-    set_target_properties(test_tensor_cuda PROPERTIES CUDA_ARCHITECTURES native)
-
-    add_gtest(test_nn_cuda cuda/nn.cu vext)
-    set_target_properties(test_nn_cuda PROPERTIES CUDA_ARCHITECTURES native)
-else()
-    message(STATUS "Skipping CUDA tests because VEXT_CUDA is OFF")
+		set_target_properties(test_ops_cuda test_tensor_cuda test_nn_cuda PROPERTIES
+			CUDA_ARCHITECTURES "${VEXT_CUDA_ARCHITECTURES}"
+			CUDA_STANDARD 20
+			CUDA_STANDARD_REQUIRED ON)
+	else()
+		message(STATUS "Skipping CUDA tests because vext::cuda is unavailable")
+	endif()
 endif()
 
-#add_executable(bench_cpu benchmark/bench_cpu.cpp)
-#target_link_libraries(bench_cpu PRIVATE vext benchmark::benchmark)
-#target_compile_options(bench_cpu PRIVATE)
+if(VEXT_BUILD_BENCHMARKS)
+	add_executable(bench_cpu benchmark/bench_cpu.cpp)
+	target_link_libraries(bench_cpu PRIVATE vext::cpu benchmark::benchmark)
+	vext_apply_project_options(bench_cpu)
 
-#if(VEXT_CUDA)
-#    add_executable(bench_cuda benchmark/bench_cuda.cu)
-#    target_link_libraries(bench_cuda PRIVATE vext benchmark::benchmark)
-#    set_target_properties(bench_cuda PROPERTIES CUDA_ARCHITECTURES native)
-#else()
-#    message(STATUS "Skipping CUDA benchmarks because VEXT_CUDA is OFF")
-#endif()
+	if(TARGET vext::cuda)
+		add_executable(bench_cuda benchmark/bench_cuda.cu)
+		target_link_libraries(bench_cuda PRIVATE vext::cuda benchmark::benchmark)
+		set_target_properties(bench_cuda PROPERTIES
+			CUDA_ARCHITECTURES "${VEXT_CUDA_ARCHITECTURES}"
+			CUDA_STANDARD 20
+			CUDA_STANDARD_REQUIRED ON)
+		vext_apply_project_options(bench_cuda NO_SANITIZERS)
+	else()
+		message(STATUS "Skipping CUDA benchmarks because vext::cuda is unavailable")
+	endif()
+endif()

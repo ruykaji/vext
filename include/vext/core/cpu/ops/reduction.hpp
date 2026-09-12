@@ -11,7 +11,8 @@
 namespace vext::core::cpu::ops
 {
 
-template <ReductionOp Kp, typename T1, typename T2>
+template <Op Kp, typename T1, typename T2>
+requires core::ReductionOperation<Kp>
 void
 reduce(
 	T1* __restrict__ out,
@@ -35,15 +36,15 @@ reduce(
 		{
 			T1 accumulator = 0;
 
-			if constexpr(Kp == ReductionOp::PROD)
+			if constexpr(Kp == Op::PROD)
 				{
 					accumulator = 1;
 				}
-			else if constexpr(Kp == ReductionOp::MIN)
+			else if constexpr(Kp == Op::MIN)
 				{
 					accumulator = std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == ReductionOp::MAX)
+			else if constexpr(Kp == Op::MAX)
 				{
 					accumulator = std::numeric_limits<T1>::lowest();
 				}
@@ -57,19 +58,19 @@ reduce(
 
 			for(std::uint32_t j = 0; j < M; ++j)
 				{
-					if constexpr(Kp == ReductionOp::PROD)
+					if constexpr(Kp == Op::PROD)
 						{
 							accumulator *= static_cast<T1>(src[keep_offset + reduce_offset]);
 						}
-					else if constexpr(Kp == ReductionOp::MIN)
+					else if constexpr(Kp == Op::MIN)
 						{
 							accumulator = std::min(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
-					else if constexpr(Kp == ReductionOp::MAX)
+					else if constexpr(Kp == Op::MAX)
 						{
 							accumulator = std::max(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
-					else if constexpr(Kp == ReductionOp::L2_NORM)
+					else if constexpr(Kp == Op::L2_NORM)
 						{
 							accumulator += src[keep_offset + reduce_offset] * src[keep_offset + reduce_offset];
 						}
@@ -98,7 +99,7 @@ reduce(
 						}
 				}
 
-			if constexpr(Kp == ReductionOp::VAR || Kp == ReductionOp::STD)
+			if constexpr(Kp == Op::VAR || Kp == Op::STD)
 				{
 					const float mean       = static_cast<float>(accumulator) / M;
 					float       dispersion = 0.0f;
@@ -135,7 +136,7 @@ reduce(
 								}
 						}
 
-					if constexpr(Kp == ReductionOp::VAR)
+					if constexpr(Kp == Op::VAR)
 						{
 							out[i] = dispersion / M;
 						}
@@ -144,11 +145,11 @@ reduce(
 							out[i] = std::sqrt(dispersion / M);
 						}
 				}
-			else if constexpr(Kp == ReductionOp::MEAN)
+			else if constexpr(Kp == Op::MEAN)
 				{
 					out[i] = accumulator / M;
 				}
-			else if constexpr(Kp == ReductionOp::L2_NORM)
+			else if constexpr(Kp == Op::L2_NORM)
 				{
 					out[i] = std::sqrt(accumulator);
 				}

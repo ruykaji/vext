@@ -199,5 +199,5 @@ private:
 
 #define VEXT_MODULE(param)                          \
 	using vext::nn::Module<param>::assign_parameter; \
-	using vext::nn::Module<param>::assign_module;
+	using vext::nn::Module<param>::assign_module
 #endif

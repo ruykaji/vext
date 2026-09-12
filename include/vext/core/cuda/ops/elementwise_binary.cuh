@@ -33,7 +33,8 @@ struct BinaryWithBroadcastMeta
 	std::uint32_t size = 0;
 };
 
-template <BinaryOp Kp, typename T1, typename T2, typename T3>
+template <Op Kp, typename T1, typename T2, typename T3>
+requires core::BinaryOperation<Kp>
 __global__ void
 binary(
 	T1*       out,
@@ -46,42 +47,43 @@ binary(
 
 	for(std::uint32_t i = tid; i < N; i += stride)
 		{
-			if constexpr(Kp == BinaryOp::ADD)
+			if constexpr(Kp == Op::ADD)
 				{
 					out[i] = a[i] + b[i];
 				}
-			else if constexpr(Kp == BinaryOp::SUB)
+			else if constexpr(Kp == Op::SUB)
 				{
 					out[i] = a[i] - b[i];
 				}
-			else if constexpr(Kp == BinaryOp::MUL)
+			else if constexpr(Kp == Op::MUL)
 				{
 					out[i] = a[i] * b[i];
 				}
-			else if constexpr(Kp == BinaryOp::DIV)
+			else if constexpr(Kp == Op::DIV)
 				{
 					out[i] = a[i] / b[i];
 				}
-			else if constexpr(Kp == BinaryOp::POW)
+			else if constexpr(Kp == Op::POW)
 				{
 					out[i] = ::cuda::std::pow(a[i], b[i]);
 				}
-			else if constexpr(Kp == BinaryOp::MIN)
+			else if constexpr(Kp == Op::MIN)
 				{
 					out[i] = ::cuda::std::min(a[i], b[i]);
 				}
-			else if constexpr(Kp == BinaryOp::MAX)
+			else if constexpr(Kp == Op::MAX)
 				{
 					out[i] = ::cuda::std::max(a[i], b[i]);
 				}
-			else if constexpr(Kp == BinaryOp::PRELU)
+			else if constexpr(Kp == Op::PRELU)
 				{
 					out[i] = ::cuda::std::max<T1>(0, a[i]) + b[i] * ::cuda::std::min<T1>(0, a[i]);
 				}
 		}
 }
 
-template <BinaryOp Kp, typename T1, typename T2, typename T3>
+template <Op Kp, typename T1, typename T2, typename T3>
+requires core::BinaryOperation<Kp>
 __global__ void
 binary_with_broadcast(
 	T1*       out,
@@ -111,42 +113,42 @@ binary_with_broadcast(
 						}
 				}
 
-			if constexpr(Kp == BinaryOp::ADD)
+			if constexpr(Kp == Op::ADD)
 				{
 
 					out[i] = a[i] + b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOp::SUB)
+			else if constexpr(Kp == Op::SUB)
 				{
 
 					out[i] = a[i] - b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOp::MUL)
+			else if constexpr(Kp == Op::MUL)
 				{
 
 					out[i] = a[i] * b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOp::DIV)
+			else if constexpr(Kp == Op::DIV)
 				{
 
 					out[i] = a[i] / b[b_offset];
 				}
-			else if constexpr(Kp == BinaryOp::POW)
+			else if constexpr(Kp == Op::POW)
 				{
 
 					out[i] = ::cuda::std::pow(a[i], b[b_offset]);
 				}
-			else if constexpr(Kp == BinaryOp::MIN)
+			else if constexpr(Kp == Op::MIN)
 				{
 
 					out[i] = ::cuda::std::min(a[i], b[b_offset]);
 				}
-			else if constexpr(Kp == BinaryOp::MAX)
+			else if constexpr(Kp == Op::MAX)
 				{
 
 					out[i] = ::cuda::std::max(a[i], b[b_offset]);
 				}
-			else if constexpr(Kp == BinaryOp::PRELU)
+			else if constexpr(Kp == Op::PRELU)
 				{
 					out[i] = ::cuda::std::max<T1>(0, a[i]) + b[b_offset] * ::cuda::std::min<T1>(0, a[i]);
 				}
@@ -158,7 +160,8 @@ binary_with_broadcast(
 namespace vext::core::cuda::ops
 {
 
-template <BinaryOp Kp, typename T1, typename T2, typename T3>
+template <Op Kp, typename T1, typename T2, typename T3>
+requires core::BinaryOperation<Kp>
 void
 binary(
 	T1*                 out,
@@ -173,7 +176,8 @@ binary(
 	CUDA_CHECK(cudaGetLastError());
 }
 
-template <BinaryOp Kp, typename T1, typename T2, typename T3>
+template <Op Kp, typename T1, typename T2, typename T3>
+requires core::BinaryOperation<Kp>
 void
 binary_with_broadcast(
 	T1*                               out,

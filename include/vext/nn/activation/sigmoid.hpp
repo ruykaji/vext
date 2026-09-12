@@ -20,12 +20,12 @@ public:
 	{
 		if constexpr(Mp == Mutation::IN_PLACE)
 			{
-				ops::unary<UnaryOp::SIGMOID>(x);
+				unary<Op::SIGMOID>(x);
 			}
 		else if constexpr(Mp == Mutation::COPY)
 			{
 				Tensor<float, Bp> copy(x);
-				ops::unary<UnaryOp::SIGMOID>(copy);
+				unary<Op::SIGMOID>(copy);
 
 				return copy;
 			}

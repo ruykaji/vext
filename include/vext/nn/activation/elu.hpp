@@ -21,12 +21,12 @@ public:
 	{
 		if constexpr(Mp == Mutation::IN_PLACE)
 			{
-				ops::unary<UnaryOp::ELU>(x, a);
+				unary<Op::ELU>(x, a);
 			}
 		else if constexpr(Mp == Mutation::COPY)
 			{
 				Tensor<float, Bp> copy(x);
-				ops::unary<UnaryOp::ELU>(copy, a);
+				unary<Op::ELU>(copy, a);
 
 				return copy;
 			}

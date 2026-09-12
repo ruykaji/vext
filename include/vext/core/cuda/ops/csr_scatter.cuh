@@ -25,7 +25,8 @@
 namespace vext::core::cuda::ops::kernel
 {
 
-template <CSRScatterOp Kp, typename T1, typename T2>
+template <Op Kp, typename T1, typename T2>
+requires core::SparseReductionOperation<Kp>
 __global__ void
 csr_scatter(
 	T1* __restrict__ out,
@@ -55,15 +56,15 @@ csr_scatter(
 				{
 					T1 accumulator = 0;
 
-					if constexpr(Kp == CSRScatterOp::PROD)
+					if constexpr(Kp == Op::PROD)
 						{
 							accumulator = 1;
 						}
-					else if constexpr(Kp == CSRScatterOp::MIN)
+					else if constexpr(Kp == Op::MIN)
 						{
 							accumulator = ::cuda::std::numeric_limits<T1>::max();
 						}
-					else if constexpr(Kp == CSRScatterOp::MAX)
+					else if constexpr(Kp == Op::MAX)
 						{
 							accumulator = ::cuda::std::numeric_limits<T1>::lowest();
 						}
@@ -72,19 +73,19 @@ csr_scatter(
 						{
 							const std::uint32_t index = tail[h] * S + k;
 
-							if constexpr(Kp == CSRScatterOp::PROD)
+							if constexpr(Kp == Op::PROD)
 								{
 									accumulator *= src[index];
 								}
-							else if constexpr(Kp == CSRScatterOp::MIN)
+							else if constexpr(Kp == Op::MIN)
 								{
 									accumulator = ::cuda::std::min<T1>(accumulator, src[index]);
 								}
-							else if constexpr(Kp == CSRScatterOp::MAX)
+							else if constexpr(Kp == Op::MAX)
 								{
 									accumulator = ::cuda::std::max<T1>(accumulator, src[index]);
 								}
-							else if constexpr(Kp == CSRScatterOp::VAR || Kp == CSRScatterOp::STD)
+							else if constexpr(Kp == Op::VAR || Kp == Op::STD)
 								{
 									const float diff = src[index] - out[i * S + k];
 									accumulator += diff * diff;
@@ -99,15 +100,15 @@ csr_scatter(
 						{
 							const T2 shuffled = __shfl_down_sync(0xffffffff, accumulator, offset);
 
-							if constexpr(Kp == CSRScatterOp::PROD)
+							if constexpr(Kp == Op::PROD)
 								{
 									accumulator *= shuffled;
 								}
-							else if constexpr(Kp == CSRScatterOp::MIN)
+							else if constexpr(Kp == Op::MIN)
 								{
 									accumulator = (shuffled < accumulator) ? shuffled : accumulator;
 								}
-							else if constexpr(Kp == CSRScatterOp::MAX)
+							else if constexpr(Kp == Op::MAX)
 								{
 									accumulator = (shuffled > accumulator) ? shuffled : accumulator;
 								}
@@ -119,11 +120,11 @@ csr_scatter(
 
 					if(lane == 0)
 						{
-							if constexpr(Kp == CSRScatterOp::MEAN || Kp == CSRScatterOp::VAR)
+							if constexpr(Kp == Op::MEAN || Kp == Op::VAR)
 								{
 									out[i * S + k] = accumulator * scale;
 								}
-							else if constexpr(Kp == CSRScatterOp::STD)
+							else if constexpr(Kp == Op::STD)
 								{
 									out[i * S + k] = ::cuda::std::sqrt(accumulator * scale);
 								}
@@ -141,7 +142,8 @@ csr_scatter(
 namespace vext::core::cuda::ops
 {
 
-template <CSRScatterOp Kp, typename T1, typename T2>
+template <Op Kp, typename T1, typename T2>
+requires core::SparseReductionOperation<Kp>
 void
 csr_scatter(
 	T1*                  out,
@@ -154,9 +156,9 @@ csr_scatter(
 	constexpr std::uint32_t block_size = 256;
 	const std::uint32_t     grid_size  = (N + block_size - 1) / block_size;
 
-	if constexpr(Kp == CSRScatterOp::VAR || Kp == CSRScatterOp::STD)
+	if constexpr(Kp == Op::VAR || Kp == Op::STD)
 		{
-			kernel::csr_scatter<CSRScatterOp::MEAN><<<grid_size, block_size>>>(out, src, head, tail, N, S);
+			kernel::csr_scatter<Op::MEAN><<<grid_size, block_size>>>(out, src, head, tail, N, S);
 			CUDA_CHECK(cudaGetLastError());
 
 			kernel::csr_scatter<Kp><<<grid_size, block_size>>>(out, src, head, tail, N, S);

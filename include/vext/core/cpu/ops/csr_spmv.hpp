@@ -10,7 +10,8 @@
 namespace vext::core::cpu::ops
 {
 
-template <CSRSpMVOp Kp, typename T1, typename T2, typename T3>
+template <Op Kp, typename T1, typename T2, typename T3>
+requires core::SparseReductionOperation<Kp>
 void
 csr_spmv(
 	T1* __restrict__ y,
@@ -27,15 +28,15 @@ csr_spmv(
 
 			T1 accumulator = 0;
 
-			if constexpr(Kp == CSRSpMVOp::PROD)
+			if constexpr(Kp == Op::PROD)
 				{
 					accumulator = 1;
 				}
-			else if constexpr(Kp == CSRSpMVOp::MIN)
+			else if constexpr(Kp == Op::MIN)
 				{
 					accumulator = std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == CSRSpMVOp::MAX)
+			else if constexpr(Kp == Op::MAX)
 				{
 					accumulator = std::numeric_limits<T1>::lowest();
 				}
@@ -44,15 +45,15 @@ csr_spmv(
 				{
 					const T1 prod = A[h] * x[tail[h]];
 
-					if constexpr(Kp == CSRSpMVOp::PROD)
+					if constexpr(Kp == Op::PROD)
 						{
 							accumulator *= prod;
 						}
-					else if constexpr(Kp == CSRSpMVOp::MIN)
+					else if constexpr(Kp == Op::MIN)
 						{
 							accumulator = std::min<T1>(accumulator, prod);
 						}
-					else if constexpr(Kp == CSRSpMVOp::MAX)
+					else if constexpr(Kp == Op::MAX)
 						{
 							accumulator = std::max<T1>(accumulator, prod);
 						}
@@ -62,12 +63,12 @@ csr_spmv(
 						}
 				}
 
-			if constexpr(Kp == CSRSpMVOp::MEAN)
+			if constexpr(Kp == Op::MEAN)
 				{
 					const float scale = 1.0f / static_cast<float>(end - start);
 					y[i]              = accumulator * scale;
 				}
-			else if constexpr(Kp == CSRSpMVOp::VAR || Kp == CSRSpMVOp::STD)
+			else if constexpr(Kp == Op::VAR || Kp == Op::STD)
 				{
 					const float scale = 1.0f / static_cast<float>(end - start);
 					const float mean  = accumulator * scale;
@@ -82,7 +83,7 @@ csr_spmv(
 							dispertion += diff * diff;
 						}
 
-					if constexpr(Kp == CSRSpMVOp::VAR)
+					if constexpr(Kp == Op::VAR)
 						{
 							y[i] = dispertion * scale;
 						}

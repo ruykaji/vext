@@ -75,12 +75,12 @@ namespace vext::core::cuda::ops
 template <typename T1, typename T2, typename T3>
 void
 matmul(
-	T1* out,
-	const T2*                   a,
-	const T3*                   b,
-	const std::uint32_t         M,
-	const std::uint32_t         P,
-	const std::uint32_t         N)
+	T1*                 out,
+	const T2*           a,
+	const T3*           b,
+	const std::uint32_t M,
+	const std::uint32_t P,
+	const std::uint32_t N)
 {
 	const dim3 block(16, 16);
 	const dim3 grid((N + 16 - 1) / 16, (M + 16 - 1) / 16);

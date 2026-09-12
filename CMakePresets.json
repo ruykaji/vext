@@ -2,7 +2,7 @@
   "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 15,
+    "minor": 24,
     "patch": 0
   },
   "configurePresets": [
@@ -11,9 +11,10 @@
       "displayName": "Clang (system /usr/bin)",
       "generator": "Ninja",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "/usr/bin/clang",
         "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "VEXT_BUILD_TESTS": "ON",
+        "VEXT_BUILD_BENCHMARKS": "ON"
       }
     },
     {
@@ -42,5 +43,4 @@
     }
   ]
 }
-
 

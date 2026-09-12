@@ -21,12 +21,12 @@ public:
 	{
 		if constexpr(Mp == Mutation::IN_PLACE)
 			{
-				ops::unary<UnaryOp::LEAKY_RELU>(x, a);
+				unary<Op::LEAKY_RELU>(x, a);
 			}
 		else if constexpr(Mp == Mutation::COPY)
 			{
 				Tensor<float, Bp> copy(x);
-				ops::unary<UnaryOp::LEAKY_RELU>(copy, a);
+				unary<Op::LEAKY_RELU>(copy, a);
 
 				return copy;
 			}

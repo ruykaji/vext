@@ -4,14 +4,15 @@
 #include <initializer_list>
 #include <queue>
 #include <stdexcept>
-#include <type_traits>
 #include <utility>
 
 #include <vext/core/cpu/allocator.hpp>
 #include <vext/core/cpu/ops/memory.hpp>
 
+#if VEXT_CUDA
 #include <vext/core/cuda/allocator.cuh>
 #include <vext/core/cuda/ops/memory.cuh>
+#endif
 
 #include <vext/core/type.hpp>
 #include <vext/type.hpp>
@@ -26,42 +27,57 @@ class Tensor
 	friend class Tensor;
 
 	template <typename Tp>
-	struct InitializerDimension
+	struct initializer_dimension
 	{
-		Tp                                value    = 0;
-		std::vector<InitializerDimension> children = {};
+		Tp                                 value    = 0;
+		std::vector<initializer_dimension> children = {};
 
-		InitializerDimension(
+		initializer_dimension(
 			const Tp value)
 			: value(value) {};
 
-		InitializerDimension(
-			const std::initializer_list<InitializerDimension>& children)
+		initializer_dimension(
+			const std::initializer_list<initializer_dimension>& children)
 			: children(children) {};
 	};
 
 public:
+	using value_type                      = T1;
+	static constexpr Backend backend_type = B1;
+
+public:
+	template <std::integral... Is>
 	explicit Tensor(
-		const std::vector<std::uint32_t>& dims) : __dims(dims)
+		Is... dims)
+		: __dims({ static_cast<std::uint32_t>(dims)... })
+	{
+		compute_shape();
+		allocate();
+	}
+
+	template <std::integral... Is>
+	explicit Tensor(
+		const std::vector<std::uint32_t>& dims)
+		: __dims(dims)
 	{
 		compute_shape();
 		allocate();
 	}
 
 	explicit Tensor(
-		const std::initializer_list<InitializerDimension<T1>>& list)
+		const std::initializer_list<initializer_dimension<T1>>& list)
 	{
 		if(list.size() == 0)
 			{
-				throw std::runtime_error("");
+				throw std::runtime_error("Tensor initializer list must contain at least one element.");
 			}
 
-		const InitializerDimension<T1> root(list);
+		const initializer_dimension<T1> root(list);
 
 		std::vector<std::uint32_t> dims;
 		std::vector<T1>            data;
 
-		for(InitializerDimension<T1> const* node = &root; !node->children.empty(); node = &node->children[0])
+		for(initializer_dimension<T1> const* node = &root; !node->children.empty(); node = &node->children[0])
 			{
 				const std::uint64_t size = node->children.size();
 
@@ -73,19 +89,19 @@ public:
 				dims.emplace_back(size);
 			}
 
-		std::queue<const InitializerDimension<T1>*> queue;
+		std::queue<const initializer_dimension<T1>*> queue;
 		queue.emplace(&root);
 
 		while(!queue.empty())
 			{
-				const InitializerDimension<T1>* node = queue.front();
+				const initializer_dimension<T1>* node = queue.front();
 				queue.pop();
 
-				const std::vector<InitializerDimension<T1>>& children = node->children;
+				const std::vector<initializer_dimension<T1>>& children = node->children;
 
 				if(children.empty())
 					{
-						throw std::invalid_argument("Zero-sized dimensions are not allowed.");
+						throw std::invalid_argument("Tensor initializer contains an empty nested dimension; every dimension must contain at least one element.");
 					}
 
 				const std::uint64_t expected_size = children.front().children.size();
@@ -94,7 +110,7 @@ public:
 					{
 						if(child.children.size() != expected_size)
 							{
-								throw std::invalid_argument("Inconsistent shape.");
+								throw std::invalid_argument("Tensor initializer is ragged; every nested list at the same depth must have the same length.");
 							}
 
 						if(child.children.empty())
@@ -119,19 +135,6 @@ public:
 
 		compute_shape();
 		allocate<B1>(data.data());
-	}
-
-	template <std::integral... Is>
-	Tensor(
-		Is... dims)
-	{
-		static_assert(sizeof...(dims) >= core::MIN_RANK, "");
-		static_assert(sizeof...(dims) <= core::MAX_RANK, "");
-
-		__dims = { static_cast<std::uint32_t>(dims)... };
-
-		compute_shape();
-		allocate();
 	}
 
 	template <Backend B2>
@@ -264,7 +267,7 @@ public:
 
 				if(index >= __length)
 					{
-						throw std::invalid_argument("");
+						throw std::invalid_argument("Computed tensor index is outside the allocated storage.");
 					}
 			}
 
@@ -303,7 +306,7 @@ public:
 
 				if(index >= __length)
 					{
-						throw std::invalid_argument("");
+						throw std::invalid_argument("Computed tensor index is outside the allocated storage.");
 					}
 			}
 
@@ -362,12 +365,12 @@ private:
 
 		if(size < core::MIN_RANK)
 			{
-				throw std::runtime_error("");
+				throw std::runtime_error("Tensor rank must be at least one; the provided shape has no dimensions.");
 			}
 
 		if(size > core::MAX_RANK)
 			{
-				throw std::runtime_error("");
+				throw std::runtime_error("Tensor rank exceeds the maximum supported rank.");
 			}
 
 		__strides.resize(size, 0);
@@ -380,7 +383,7 @@ private:
 
 				if(__length > core::MAX_LENGTH)
 					{
-						throw std::overflow_error("Length calculation overflowed");
+						throw std::overflow_error("Tensor element count exceeds the maximum supported length.");
 					}
 
 				__strides[i - 1] = stride;
@@ -389,7 +392,7 @@ private:
 
 		if(__length < core::MIN_LENGTH)
 			{
-				throw std::overflow_error("Length calculation underflowed");
+				throw std::overflow_error("Tensor dimensions must be greater than zero; the computed element count is zero.");
 			}
 	}
 
@@ -482,7 +485,7 @@ private:
 
 		if(num_arguments != __dims.size())
 			{
-				throw std::runtime_error("Incorrect number of tensor dimensions.");
+				throw std::runtime_error("Tensor index rank does not match the tensor rank.");
 			}
 
 		std::uint32_t index = 0;
@@ -491,7 +494,7 @@ private:
 			{
 				if(dims_pack[i] >= __dims[i])
 					{
-						throw std::runtime_error("Tensor index out of range.");
+						throw std::runtime_error("Tensor coordinate is outside the bounds of its dimension.");
 					}
 
 				index += dims_pack[i] * __strides[i];
@@ -499,7 +502,7 @@ private:
 
 		if(index >= __length)
 			{
-				throw std::runtime_error("");
+				throw std::runtime_error("Computed tensor index is outside the allocated storage.");
 			}
 
 		return index;

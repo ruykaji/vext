@@ -21,10 +21,18 @@
 
 #include <vext/tensor.hpp>
 
-namespace vext::ops
+namespace vext
 {
 
-template <UnaryOp Kp, typename T1, Backend B1, core::Arithmetic... Is>
+inline Axes
+axes(
+	std::initializer_list<std::int32_t> values)
+{
+	return Axes(values);
+}
+
+template <Op Kp, typename T1, Backend B1, core::Arithmetic... Is>
+requires core::UnaryOperation<Kp>
 void
 unary(
 	Tensor<T1, B1>& tensor,
@@ -47,15 +55,44 @@ unary(
 	#endif
 }
 
-template <BinaryOp Kp, typename T1, Backend B1, typename T2, Backend B2>
-Tensor<std::common_type_t<T1, T2>, B1>
+template <Op Kp, typename T1, Backend B1, typename T2, Backend B2, typename To = core::no_value_t>
+requires core::BinaryOperation<Kp>
+auto
 binary(
 	const Tensor<T1, B1>& lhs,
-	const Tensor<T2, B2>& rhs)
+	const Tensor<T2, B2>& rhs,
+	To&&                  maybe_out = {})
 {
-	static_assert(B1 == B2, "Error: Binary ops cannot be performed on tensors with different Backends!");
+	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
-	Tensor<std::common_type_t<T1, T2>, B1> out(lhs.dims());
+	if constexpr(IS_OUT_DEFINED)
+		{
+			constexpr bool IS_MUTABLE = !std::is_const_v<std::remove_reference_t<To>>;
+			static_assert(IS_MUTABLE, "");
+
+			constexpr bool IS_TENSOR_INSTANTIATION = core::is_tensor_instantiation<std::remove_reference_t<To>, Tensor>::value;
+			static_assert(IS_TENSOR_INSTANTIATION, "");
+		}
+
+	using CommonType = std::common_type_t<T1, T2>;
+	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
+
+	constexpr bool IS_SAME_DEVICE = (B1 == B2 && B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
+
+	const auto assign_out = [&]() -> TensorOut
+		{
+			if constexpr(IS_OUT_DEFINED)
+				{
+					return maybe_out;
+				}
+			else
+				{
+					return TensorOut(lhs.dims());
+				}
+		};
+
+	TensorOut out = assign_out();
 
 	if(lhs.dims() == rhs.dims())
 		{
@@ -90,7 +127,7 @@ binary(
 				{
 					if(target_size > source_size)
 						{
-							throw std::runtime_error("Cannot perform binary operation on incompatible shapes.");
+							throw std::runtime_error("Binary operation cannot broadcast the right-hand tensor shape to the left-hand tensor shape.");
 						}
 
 					std::uint64_t offset_left = 0;
@@ -116,7 +153,7 @@ binary(
 
 					if(subset_size == 0)
 						{
-							throw std::runtime_error("Cannot perform binary operation on incompatible shapes.");
+							throw std::runtime_error("Binary operation cannot broadcast the right-hand tensor shape to the left-hand tensor shape.");
 						}
 
 					strides = lhs.strides();
@@ -149,22 +186,58 @@ binary(
 			#endif
 		}
 
-	return out;
+	if constexpr(IS_OUT_DEFINED)
+		{
+			return;
+		}
+	else
+		{
+			return out;
+		}
 }
 
-template <LogicOp Kp, typename T1, Backend B1, typename T2, Backend B2>
-Tensor<std::uint8_t, B1>
+template <Op Kp, typename T1, Backend B1, typename T2, Backend B2, typename To = core::no_value_t>
+requires core::LogicalOperation<Kp>
+auto
 logical(
 	const Tensor<T1, B1>& lhs,
-	const Tensor<T2, B2>& rhs)
+	const Tensor<T2, B2>& rhs,
+	To&&                  maybe_out = {})
 {
-	static_assert(B1 == B2, "Error: Binary ops cannot be performed on tensors with different Backends!");
+	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
-	Tensor<std::uint8_t, B1> out(lhs.dims());
+	if constexpr(IS_OUT_DEFINED)
+		{
+			constexpr bool IS_MUTABLE = !std::is_const_v<std::remove_reference_t<To>>;
+			static_assert(IS_MUTABLE, "");
+
+			constexpr bool IS_TENSOR_INSTANTIATION = core::is_tensor_instantiation<std::remove_cvref_t<To>, Tensor>::value;
+			static_assert(IS_TENSOR_INSTANTIATION, "");
+		}
+
+	using CommonType = std::uint8_t;
+	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
+
+	constexpr bool IS_SAME_DEVICE = (B1 == B2 && B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
+
+	const auto assign_out = [&]() -> TensorOut
+		{
+			if constexpr(IS_OUT_DEFINED)
+				{
+					return maybe_out;
+				}
+			else
+				{
+					return TensorOut(lhs.dims());
+				}
+		};
+
+	TensorOut out = assign_out();
 
 	if(lhs.dims() != rhs.dims())
 		{
-			throw std::runtime_error("Cannot perform logical operation on incompatible shapes");
+			throw std::runtime_error("Logical operation requires both tensors to have identical shapes.");
 		}
 
 	if constexpr(B1 == Backend::CPU)
@@ -183,45 +256,82 @@ logical(
 		}
 	#endif
 
-	return out;
+	if constexpr(IS_OUT_DEFINED)
+		{
+			return;
+		}
+	else
+		{
+			return out;
+		}
 }
 
-template <ReductionOp Kp, typename T1, Backend B1, std::integral... Is>
+template <Op Kp, typename T1, Backend B1, typename Ta = core::no_value_t, typename To = core::no_value_t>
+requires core::ReductionOperation<Kp>
 auto
 reduction(
 	const Tensor<T1, B1>& src,
-	Is... axis)
+	Ta&&                  axis      = {},
+	To&&                  maybe_out = {})
 {
-	const std::uint32_t reduce_axis[] = { static_cast<std::uint32_t>(axis)... };
-	const std::uint32_t reduce_size   = sizeof...(axis);
+	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
+
+	if constexpr(IS_OUT_DEFINED)
+		{
+			constexpr bool IS_MUTABLE = !std::is_const_v<std::remove_reference_t<To>>;
+			static_assert(IS_MUTABLE, "");
+
+			constexpr bool IS_TENSOR_INSTANTIATION = core::is_tensor_instantiation<std::remove_cvref_t<To>, Tensor>::value;
+			static_assert(IS_TENSOR_INSTANTIATION, "");
+		}
+
+	using CommonType = core::ReductionOut<Kp, T1>;
+	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
+
+	constexpr bool IS_SAME_DEVICE = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
+
+	constexpr bool IS_REDUCE_AXIS = !std::is_same_v<Ta, core::no_value_t>;
+
+	if constexpr(IS_REDUCE_AXIS)
+		{
+			constexpr bool IS_AXES = std::is_same_v<std::remove_cvref_t<Ta>, Axes>;
+			static_assert(IS_AXES, "Reduction axes must be provided as vext::Axes.");
+		}
 
 	const std::uint32_t dims_count = src.dims().size();
 
 	std::vector<std::uint8_t> is_reduce_axis = {};
 	std::uint32_t             keep_size      = 1;
+	std::uint32_t             reduce_count   = 0;
 
-	if constexpr(reduce_size != 0)
+	if constexpr(IS_REDUCE_AXIS)
 		{
-			if(reduce_size > dims_count)
+			reduce_count = axis.size();
+
+			if(reduce_count > dims_count)
 				{
-					throw std::runtime_error("Cannot reduce tensor along non-existing axis.");
+					throw std::runtime_error("Reduction specifies more axes than the tensor rank.");
 				}
 
 			is_reduce_axis.resize(dims_count, 0);
-			keep_size = dims_count - reduce_size;
+			keep_size = dims_count - reduce_count;
 
-			for(std::uint32_t i = 0; i < reduce_size; ++i)
+			for(const auto ax : axis)
 				{
-					std::uint32_t ax = reduce_axis[i];
-
-					if(ax >= dims_count)
+					if(ax < 0)
 						{
-							throw std::runtime_error("Cannot reduce tensor along non-existing axis.");
+							throw std::runtime_error("Reduction axis cannot be negative.");
+						}
+
+					if(static_cast<std::uint32_t>(ax) >= dims_count)
+						{
+							throw std::runtime_error("Reduction axis is outside the tensor rank.");
 						}
 
 					if(is_reduce_axis[ax])
 						{
-							throw std::runtime_error("Duplicate reduction axis.");
+							throw std::runtime_error("Reduction axes must be unique; a duplicate axis was provided.");
 						}
 
 					is_reduce_axis[ax] = 1;
@@ -235,23 +345,15 @@ reduction(
 
 	keep_dims.reserve(keep_size);
 	keep_strides.reserve(keep_size);
-	reduce_dims.reserve(reduce_size);
-	reduce_strides.reserve(reduce_size);
 
 	std::uint32_t N = 1;
 	std::uint32_t M = 1;
 
-	if constexpr(reduce_size == 0)
+	if constexpr(IS_REDUCE_AXIS)
 		{
-			keep_dims.emplace_back(1);
-			keep_strides.emplace_back(0);
+			reduce_dims.reserve(reduce_count);
+			reduce_strides.reserve(reduce_count);
 
-			reduce_dims    = src.dims();
-			reduce_strides = src.strides();
-			M              = src.length();
-		}
-	else
-		{
 			for(std::uint32_t i = 0; i < dims_count; ++i)
 				{
 					if(is_reduce_axis[i])
@@ -268,8 +370,29 @@ reduction(
 						}
 				}
 		}
+	else
+		{
+			keep_dims.emplace_back(1);
+			keep_strides.emplace_back(0);
 
-	Tensor<core::ReductionOut<Kp, T1>, B1> out(keep_dims);
+			reduce_dims    = src.dims();
+			reduce_strides = src.strides();
+			M              = src.length();
+		}
+
+	const auto assign_out = [&]() -> TensorOut
+		{
+			if constexpr(IS_OUT_DEFINED)
+				{
+					return maybe_out;
+				}
+			else
+				{
+					return TensorOut(keep_dims);
+				}
+		};
+
+	TensorOut out = assign_out();
 
 	if constexpr(B1 == Backend::CPU)
 		{
@@ -287,24 +410,60 @@ reduction(
 		}
 	#endif
 
-	return out;
+	if constexpr(IS_OUT_DEFINED)
+		{
+			return;
+		}
+	else
+		{
+			return out;
+		}
 }
 
-template <CSRScatterOp Kp, typename T1, Backend B1, Backend B2, Backend B3>
+template <Op Kp, typename T1, Backend B1, Backend B2, Backend B3, typename To = core::no_value_t>
+requires core::SparseReductionOperation<Kp>
 auto
 csr_scatter(
 	const Tensor<T1, B1>&            src,
 	const Tensor<std::uint32_t, B2>& head,
-	const Tensor<std::uint32_t, B3>& tail)
+	const Tensor<std::uint32_t, B3>& tail,
+	To&&                             maybe_out = {})
 {
-	static_assert(B1 == B2 && B1 == B3, "Error: CSR Scatter ops cannot be performed on tensors with different Backends!");
+	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
+
+	if constexpr(IS_OUT_DEFINED)
+		{
+			constexpr bool IS_MUTABLE = !std::is_const_v<std::remove_reference_t<To>>;
+			static_assert(IS_MUTABLE, "");
+
+			constexpr bool IS_TENSOR_INSTANTIATION = core::is_tensor_instantiation<std::remove_cvref_t<To>, Tensor>::value;
+			static_assert(IS_TENSOR_INSTANTIATION, "");
+		}
+
+	using CommonType = core::CSRScatterOut<Kp, T1>;
+	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
+
+	constexpr bool IS_SAME_DEVICE = (B1 == B2 && B1 == B3 && B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
 
 	if(src.dims()[0] != (head.dims()[0] - 1))
 		{
-			throw std::runtime_error("Cannot perform CSR Scatter operation on incompatible shapes");
+			throw std::runtime_error("CSR scatter requires the source row count to equal the head tensor length minus one.");
 		}
 
-	Tensor<core::CSRScatterOut<Kp, T1>, B1> out(src.dims());
+	const auto assign_out = [&]() -> TensorOut
+		{
+			if constexpr(IS_OUT_DEFINED)
+				{
+					return maybe_out;
+				}
+			else
+				{
+					return TensorOut(src.dims());
+				}
+		};
+
+	TensorOut out = assign_out();
 
 	if constexpr(B1 == Backend::CPU)
 		{
@@ -322,20 +481,56 @@ csr_scatter(
 		}
 	#endif
 
-	return out;
+	if constexpr(IS_OUT_DEFINED)
+		{
+			return;
+		}
+	else
+		{
+			return out;
+		}
 }
 
-template <CSRSpMVOp Kp, typename T1, Backend B1, typename T2, Backend B2, Backend B3, Backend B4>
+template <Op Kp, typename T1, Backend B1, typename T2, Backend B2, Backend B3, Backend B4, typename To = core::no_value_t>
+requires core::SparseReductionOperation<Kp>
 auto
 csr_spmv(
 	const Tensor<T1, B1>&            A,
 	const Tensor<std::uint32_t, B2>& head,
 	const Tensor<std::uint32_t, B3>& tail,
-	const Tensor<T2, B4>&            x)
+	const Tensor<T2, B4>&            x,
+	To&&                             maybe_out = {})
 {
-	static_assert(B1 == B2 && B1 == B3 && B1 == B4, "Error: CSR Scatter ops cannot be performed on tensors with different Backends!");
+	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
-    Tensor<core::CSRSpMVOut<Kp, T1>, B1> out(head.dims()[0] - 1);
+	if constexpr(IS_OUT_DEFINED)
+		{
+			constexpr bool IS_MUTABLE = !std::is_const_v<std::remove_reference_t<To>>;
+			static_assert(IS_MUTABLE, "");
+
+			constexpr bool IS_TENSOR_INSTANTIATION = core::is_tensor_instantiation<std::remove_cvref_t<To>, Tensor>::value;
+			static_assert(IS_TENSOR_INSTANTIATION, "");
+		}
+
+	using CommonType = core::CSRSpMVOut<Kp, T1>;
+	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
+
+	constexpr bool IS_SAME_DEVICE = (B1 == B2 && B1 == B3 && B1 == B4 && B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
+
+	const auto assign_out = [&]() -> TensorOut
+		{
+			if constexpr(IS_OUT_DEFINED)
+				{
+					return maybe_out;
+				}
+			else
+				{
+					return TensorOut(head.dims()[0] - 1);
+				}
+		};
+
+	TensorOut out = assign_out();
 
 	if constexpr(B1 == Backend::CPU)
 		{
@@ -353,23 +548,46 @@ csr_spmv(
 		}
 	#endif
 
-	return out;
+	if constexpr(IS_OUT_DEFINED)
+		{
+			return;
+		}
+	else
+		{
+			return out;
+		}
 }
 
-template <typename T1, Backend B1, typename T2, Backend B2>
-Tensor<std::common_type_t<T1, T2>, B1>
+template <typename T1, Backend B1, typename T2, Backend B2, typename To = core::no_value_t>
+auto
 matmul(
 	const Tensor<T1, B1>& lhs,
-	const Tensor<T2, B2>& rhs)
+	const Tensor<T2, B2>& rhs,
+	To&&                  maybe_out = {})
 {
-	static_assert(B1 == B2, "Error: Binary operations cannot be performed on tensors with different Backends!");
+	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
+
+	if constexpr(IS_OUT_DEFINED)
+		{
+			constexpr bool IS_MUTABLE = !std::is_const_v<std::remove_reference_t<To>>;
+			static_assert(IS_MUTABLE, "");
+
+			constexpr bool IS_TENSOR_INSTANTIATION = core::is_tensor_instantiation<std::remove_cvref_t<To>, Tensor>::value;
+			static_assert(IS_TENSOR_INSTANTIATION, "");
+		}
+
+	using CommonType = std::common_type_t<T1, T2>;
+	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
+
+	constexpr bool IS_SAME_DEVICE = (B1 == B2 && B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
 
 	const std::uint32_t lhs_shared = lhs.dims().back();
 	const std::uint32_t rhs_shared = rhs.dims().front();
 
 	if(lhs_shared != rhs_shared)
 		{
-			throw std::runtime_error("Cannot multiply tensors: left tensor's last dimension must match right tensor's first dimension.");
+			throw std::runtime_error("Matrix multiplication requires the left tensor's last dimension to equal the right tensor's first dimension.");
 		}
 
 	std::uint32_t lhs_combined = 1;
@@ -386,7 +604,7 @@ matmul(
 			remainder.emplace_back(dim);
 		}
 
-	for(auto it = std::next(lhs.dims().begin()), end = lhs.dims().end(); it != end; ++it)
+	for(auto it = std::next(rhs.dims().begin()), end = rhs.dims().end(); it != end; ++it)
 		{
 			const std::uint64_t dim = *it;
 
@@ -399,7 +617,19 @@ matmul(
 			remainder.emplace_back(1);
 		}
 
-	Tensor<std::common_type_t<T1, T2>, B1> out(remainder);
+	const auto assign_out = [&]() -> TensorOut
+		{
+			if constexpr(IS_OUT_DEFINED)
+				{
+					return maybe_out;
+				}
+			else
+				{
+					return TensorOut(remainder);
+				}
+		};
+
+	TensorOut out = assign_out();
 
 	if constexpr(B1 == Backend::CPU)
 		{
@@ -417,7 +647,14 @@ matmul(
 		}
 	#endif
 
-	return out;
+	if constexpr(IS_OUT_DEFINED)
+		{
+			return;
+		}
+	else
+		{
+			return out;
+		}
 }
 
 }

@@ -1,87 +1,177 @@
-cmake_minimum_required(VERSION 3.15.0)
-project(vext VERSION 0.0.1 LANGUAGES C CXX)
+cmake_minimum_required(VERSION 3.24)
 
-option(VEXT_ENABLE_CUDA "Enable cuda" ON)
-option(VEXT_BUILD_TEST  "Build Test"  ON)
+project(vext VERSION 0.0.1 LANGUAGES CXX)
 
-set(VEXT_CUDA OFF)
+option(VEXT_ENABLE_CUDA        "Build the CUDA backend when a CUDA toolchain is available" ON)
+option(VEXT_BUILD_TESTS        "Build the test suite"                                      ON)
+option(VEXT_BUILD_BENCHMARKS   "Build benchmarks"                                          ON)
+option(VEXT_ENABLE_SANITIZERS  "Enable AddressSanitizer and UndefinedBehaviorSanitizer"    OFF)
+option(VEXT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors"                         OFF)
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+set(VEXT_CUDA_ARCHITECTURES "native" CACHE STRING "CUDA architectures used by vext CUDA targets")
 
+include(CTest)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(project_options)
+
+add_library(vext_cpu INTERFACE)
+add_library(vext::cpu 
+    ALIAS 
+        vext_cpu
+)
+
+set_target_properties(vext_cpu 
+    PROPERTIES 
+        EXPORT_NAME cpu
+)
+target_compile_features(vext_cpu 
+    INTERFACE 
+        cxx_std_20
+)
+target_compile_definitions(vext_cpu 
+    INTERFACE
+	    VEXT_CUDA=0
+	    $<$<CONFIG:Debug>:DEBUG=1>
+)
+target_include_directories(vext_cpu 
+    INTERFACE
+	    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+	    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+set(VEXT_CUDA_AVAILABLE OFF)
 
 if(VEXT_ENABLE_CUDA)
-    include(CheckLanguage)
-    check_language(CUDA)
-
+	include(CheckLanguage)
+	check_language(CUDA)
+	
     if(CMAKE_CUDA_COMPILER)
-        enable_language(CUDA)
-        find_package(CUDAToolkit QUIET)
-
+		enable_language(CUDA)
+		find_package(CUDAToolkit QUIET)
+		
         if(CUDAToolkit_FOUND)
-            set(VEXT_CUDA ON)
+			set(VEXT_CUDA_AVAILABLE ON)
 
-            message(STATUS "CUDA backend enabled")
-            message(STATUS "CUDA compiler: ${CMAKE_CUDA_COMPILER}")
-            message(STATUS "CUDA toolkit: ${CUDAToolkit_VERSION}")
-        else()
-            message(STATUS "CUDA compiler found, but CUDA Toolkit not found. Building CPU-only.")
-        endif()
-    else()
-        message(STATUS "CUDA compiler not found. Building CPU-only.")
-    endif()
+			add_library(vext_cuda INTERFACE)
+			add_library(vext::cuda 
+                ALIAS 
+                    vext_cuda
+            )
+			
+            set_target_properties(vext_cuda 
+                PROPERTIES 
+                    EXPORT_NAME cuda
+            )
+            target_compile_features(vext_cuda 
+                INTERFACE 
+                    cxx_std_20
+            )
+			target_compile_definitions(vext_cuda 
+                INTERFACE
+				    VEXT_CUDA=1
+				    $<$<CONFIG:Debug>:DEBUG=1>
+            )
+			target_include_directories(vext_cuda 
+                INTERFACE
+				    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+				    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+            )
+			target_link_libraries(vext_cuda INTERFACE CUDA::cudart)
+			
+            message(STATUS "CUDA backend enabled (${CUDAToolkit_VERSION})")
+		else()
+			message(STATUS "CUDA compiler found, but CUDAToolkit was not found; CUDA targets are disabled")
+		endif()
+	else()
+		message(STATUS "CUDA compiler was not found; CUDA targets are disabled")
+	endif()
 endif()
 
-add_library(vext
-    INTERFACE)
+if(VEXT_BUILD_TESTS)
+	find_package(GTest REQUIRED)
+endif()
 
-target_compile_definitions(vext 
-   INTERFACE 
-        $<$<CONFIG:Debug>:DEBUG=1>
-        VEXT_CUDA=$<BOOL:${VEXT_CUDA}>
+if(VEXT_BUILD_BENCHMARKS)
+	find_package(benchmark REQUIRED)
+endif()
+
+if(VEXT_BUILD_TESTS OR VEXT_BUILD_BENCHMARKS)
+	add_subdirectory(test)
+endif()
+
+install(
+    DIRECTORY 
+        include/ 
+    DESTINATION 
+        "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+install(
+    TARGETS 
+        vext_cpu 
+    EXPORT 
+        vextCpuTargets
+)
+install(
+    EXPORT
+        vextCpuTargets
+	FILE 
+        vextCpuTargets.cmake
+	NAMESPACE 
+        vext::
+	DESTINATION 
+        "${CMAKE_INSTALL_LIBDIR}/cmake/vext"
 )
 
-target_include_directories(vext
-    INTERFACE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+if(VEXT_CUDA_AVAILABLE)
+	install(
+        TARGETS 
+            vext_cuda 
+        EXPORT 
+            vextCudaTargets
+    )
+	install(
+        EXPORT 
+            vextCudaTargets
+		FILE 
+            vextCudaTargets.cmake
+		NAMESPACE 
+            vext::
+		DESTINATION 
+            "${CMAKE_INSTALL_LIBDIR}/cmake/vext"
+    )
+endif()
+
+configure_package_config_file(
+	cmake/vextConfig.cmake.in
+	"${CMAKE_CURRENT_BINARY_DIR}/vextConfig.cmake"
+	INSTALL_DESTINATION 
+        "${CMAKE_INSTALL_LIBDIR}/cmake/vext"
 )
-
-if(VEXT_CUDA)
-    set_target_properties(vext PROPERTIES
-        CUDA_STANDARD 20
-        CUDA_STANDARD_REQUIRED ON
-        CUDA_SEPARABLE_COMPILATION ON
-        CUDA_ARCHITECTURES native
-    )
-
-    target_link_libraries(vext
-        INTERFACE
-            CUDA::cudart
-    )
-endif()
-
-if(VEXT_BUILD_TEST)
-    find_package(GTest REQUIRED)
-    find_package(benchmark REQUIRED)
-
-    enable_testing()
-
-    include(GoogleTest)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/test)
-endif()
+write_basic_package_version_file(
+	"${CMAKE_CURRENT_BINARY_DIR}/vextConfigVersion.cmake"
+	VERSION 
+        "${PROJECT_VERSION}"
+	COMPATIBILITY 
+        SameMajorVersion
+)
+install(FILES
+	"${CMAKE_CURRENT_BINARY_DIR}/vextConfig.cmake"
+	"${CMAKE_CURRENT_BINARY_DIR}/vextConfigVersion.cmake"
+	DESTINATION 
+        "${CMAKE_INSTALL_LIBDIR}/cmake/vext"
+)
 
 message(STATUS "===================================================")
-message(STATUS "Project Name  : ${PROJECT_NAME}")
-message(STATUS "CMake Version : ${CMAKE_VERSION}")
-message(STATUS "C++ Standard  : ${CMAKE_CXX_STANDARD}")
-message(STATUS "CXX Compiler  : ${CMAKE_CXX_COMPILER}")
-message(STATUS "Build Test    : ${VEXT_BUILD_TEST}")
-message(STATUS "Build Type    : ${CMAKE_BUILD_TYPE}")
-message(STATUS "Debug Flags   : ${CMAKE_CXX_FLAGS_DEBUG}")
-message(STATUS "Release Flags : ${CMAKE_CXX_FLAGS_RELEASE}")
+message(STATUS "Project Name     : ${PROJECT_NAME}")
+message(STATUS "CMake Version    : ${CMAKE_VERSION}")
+message(STATUS "C++ Standard     : ${CMAKE_CXX_STANDARD}")
+message(STATUS "CXX Compiler     : ${CMAKE_CXX_COMPILER}")
+message(STATUS "Build tests      : ${VEXT_BUILD_TESTS}")
+message(STATUS "Build benchmarks : ${VEXT_BUILD_BENCHMARKS}")
+message(STATUS "Build Type       : ${CMAKE_BUILD_TYPE}")
+message(STATUS "Debug Flags      : ${CMAKE_CXX_FLAGS_DEBUG}")
+message(STATUS "Release Flags    : ${CMAKE_CXX_FLAGS_RELEASE}")
 message(STATUS "===================================================\n")

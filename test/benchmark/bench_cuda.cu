@@ -1,21 +1,22 @@
 #include <benchmark/benchmark.h>
 
-#include <limits>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include <cuda_runtime.h>
 
 #include <vext/core/cuda/allocator.cuh>
-#include <vext/core/cuda/operations/csr_scatter.cuh>
-#include <vext/core/cuda/operations/csr_spmv.cuh>
-#include <vext/core/cuda/operations/elementwise_binary.cuh>
-#include <vext/core/cuda/operations/elementwise_logical.cuh>
-#include <vext/core/cuda/operations/elementwise_unary.cuh>
-#include <vext/core/cuda/operations/linear_algebra.cuh>
-#include <vext/core/cuda/operations/memory.cuh>
-#include <vext/core/cuda/operations/reduction.cuh>
+#include <vext/core/cuda/ops/csr_scatter.cuh>
+#include <vext/core/cuda/ops/csr_spmv.cuh>
+#include <vext/core/cuda/ops/elementwise_binary.cuh>
+#include <vext/core/cuda/ops/elementwise_logical.cuh>
+#include <vext/core/cuda/ops/elementwise_unary.cuh>
+#include <vext/core/cuda/ops/linear_algebra.cuh>
+#include <vext/core/cuda/ops/memory.cuh>
+#include <vext/core/cuda/ops/reduction.cuh>
 #include <vext/nn/layer/linear.hpp>
+#include <vext/ops.hpp>
 #include <vext/tensor.hpp>
 
 namespace
@@ -127,7 +128,7 @@ copy_to_device(
 	const std::vector<Tp>& host)
 {
 	Tp* device = vext::core::cuda::allocator::allocate<Tp>(host.size());
-	vext::core::cuda::operations::memcpy<Tp, vext::Backend::CUDA, vext::Backend::CPU>(device, host.data(), static_cast<std::uint32_t>(host.size()));
+	vext::core::cuda::ops::memcpy<Tp, vext::Backend::CUDA, vext::Backend::CPU>(device, host.data(), static_cast<std::uint32_t>(host.size()));
 	return device;
 }
 
@@ -139,7 +140,7 @@ observe_tensor(
 	benchmark::DoNotOptimize(tensor.length());
 }
 
-template <vext::core::BinaryOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaBinaryKernel(
 	benchmark::State& state)
@@ -160,7 +161,7 @@ BM_CudaBinaryKernel(
 	for([[maybe_unused]] auto iteration : state)
 		{
 			timer.start();
-			vext::core::cuda::operations::binary<Kp>(out, lhs, rhs, size);
+			vext::core::cuda::ops::binary<Kp>(out, lhs, rhs, size);
 			state.SetIterationTime(timer.stop_seconds());
 			benchmark::DoNotOptimize(out);
 		}
@@ -176,7 +177,7 @@ BM_CudaBinaryKernel(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::BinaryOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaBinaryTensor(
 	benchmark::State& state)
@@ -203,40 +204,40 @@ BM_CudaBinaryTensor(
 			{
 				timer.start();
 
-				if constexpr(Kp == vext::core::BinaryOp::ADD)
+				if constexpr(Kp == vext::Op::ADD)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = lhs + rhs;
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::binary<vext::Op::ADD>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::BinaryOp::SUB)
+				else if constexpr(Kp == vext::Op::SUB)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = lhs - rhs;
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::binary<vext::Op::SUB>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::BinaryOp::MUL)
+				else if constexpr(Kp == vext::Op::MUL)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = lhs * rhs;
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::binary<vext::Op::MUL>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::BinaryOp::DIV)
+				else if constexpr(Kp == vext::Op::DIV)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = lhs / rhs;
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::binary<vext::Op::DIV>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::BinaryOp::POW)
+				else if constexpr(Kp == vext::Op::POW)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = lhs ^ rhs;
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::binary<vext::Op::POW>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::BinaryOp::PRELU)
+				else if constexpr(Kp == vext::Op::PRELU)
 					{
 						vext::Tensor<float, vext::Backend::CUDA> out(lhs);
-						out.prelu(rhs);
+						vext::binary<vext::Op::PRELU>(out, rhs, out);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
@@ -251,7 +252,7 @@ BM_CudaBinaryTensor(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::BinaryOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaBinaryTensorInPlace(
 	benchmark::State& state)
@@ -280,25 +281,25 @@ BM_CudaBinaryTensorInPlace(
 			{
 				timer.start();
 
-				if constexpr(Kp == vext::core::BinaryOp::ADD)
+				if constexpr(Kp == vext::Op::ADD)
 					{
-						out += rhs;
+						vext::binary<vext::Op::ADD>(out, rhs, out);
 					}
-				else if constexpr(Kp == vext::core::BinaryOp::SUB)
+				else if constexpr(Kp == vext::Op::SUB)
 					{
-						out -= rhs;
+						vext::binary<vext::Op::SUB>(out, rhs, out);
 					}
-				else if constexpr(Kp == vext::core::BinaryOp::MUL)
+				else if constexpr(Kp == vext::Op::MUL)
 					{
-						out *= rhs;
+						vext::binary<vext::Op::MUL>(out, rhs, out);
 					}
-				else if constexpr(Kp == vext::core::BinaryOp::DIV)
+				else if constexpr(Kp == vext::Op::DIV)
 					{
-						out /= rhs;
+						vext::binary<vext::Op::DIV>(out, rhs, out);
 					}
-				else if constexpr(Kp == vext::core::BinaryOp::POW)
+				else if constexpr(Kp == vext::Op::POW)
 					{
-						out ^= rhs;
+						vext::binary<vext::Op::POW>(out, rhs, out);
 					}
 
 				state.SetIterationTime(timer.stop_seconds());
@@ -313,7 +314,7 @@ BM_CudaBinaryTensorInPlace(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::LogicOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaLogicalKernel(
 	benchmark::State& state)
@@ -334,7 +335,7 @@ BM_CudaLogicalKernel(
 	for([[maybe_unused]] auto iteration : state)
 		{
 			timer.start();
-			vext::core::cuda::operations::logical<Kp>(out, lhs, rhs, size);
+			vext::core::cuda::ops::logical<Kp>(out, lhs, rhs, size);
 			state.SetIterationTime(timer.stop_seconds());
 			benchmark::DoNotOptimize(out);
 		}
@@ -349,7 +350,7 @@ BM_CudaLogicalKernel(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::LogicOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaLogicalTensor(
 	benchmark::State& state)
@@ -376,39 +377,39 @@ BM_CudaLogicalTensor(
 			{
 				timer.start();
 
-				if constexpr(Kp == vext::core::LogicOp::EQUAL)
+				if constexpr(Kp == vext::Op::EQUAL)
 					{
-						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs == rhs;
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = vext::logical<vext::Op::EQUAL>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::LogicOp::NOT_EQUAL)
+				else if constexpr(Kp == vext::Op::NOT_EQUAL)
 					{
-						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs != rhs;
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = vext::logical<vext::Op::NOT_EQUAL>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::LogicOp::LESS)
+				else if constexpr(Kp == vext::Op::LESS)
 					{
-						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs < rhs;
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = vext::logical<vext::Op::LESS>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::LogicOp::LESS_EQUAL)
+				else if constexpr(Kp == vext::Op::LESS_EQUAL)
 					{
-						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs <= rhs;
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = vext::logical<vext::Op::LESS_EQUAL>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::LogicOp::GREATER)
+				else if constexpr(Kp == vext::Op::GREATER)
 					{
-						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs > rhs;
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = vext::logical<vext::Op::GREATER>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::LogicOp::GREATER_EQUAL)
+				else if constexpr(Kp == vext::Op::GREATER_EQUAL)
 					{
-						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = lhs >= rhs;
+						const vext::Tensor<std::uint8_t, vext::Backend::CUDA> out = vext::logical<vext::Op::GREATER_EQUAL>(lhs, rhs);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
@@ -423,7 +424,7 @@ BM_CudaLogicalTensor(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::UnaryOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaUnaryKernel(
 	benchmark::State& state)
@@ -443,17 +444,17 @@ BM_CudaUnaryKernel(
 		{
 			timer.start();
 
-			if constexpr(Kp == vext::core::UnaryOp::LEAKY_RELU || Kp == vext::core::UnaryOp::ELU || Kp == vext::core::UnaryOp::SWISH)
+			if constexpr(Kp == vext::Op::LEAKY_RELU || Kp == vext::Op::ELU || Kp == vext::Op::SWISH)
 				{
-					vext::core::cuda::operations::unary<Kp>(values, size, 0.25f);
+					vext::core::cuda::ops::unary<Kp>(values, size, 0.25f);
 				}
-			else if constexpr(Kp == vext::core::UnaryOp::LINEAR || Kp == vext::core::UnaryOp::CLIP || Kp == vext::core::UnaryOp::POW)
+			else if constexpr(Kp == vext::Op::LINEAR || Kp == vext::Op::CLIP || Kp == vext::Op::POW)
 				{
-					vext::core::cuda::operations::unary<Kp>(values, size, 0.75f, 1.25f);
+					vext::core::cuda::ops::unary<Kp>(values, size, 0.75f, 1.25f);
 				}
 			else
 				{
-					vext::core::cuda::operations::unary<Kp>(values, size);
+					vext::core::cuda::ops::unary<Kp>(values, size);
 				}
 
 			state.SetIterationTime(timer.stop_seconds());
@@ -469,7 +470,7 @@ BM_CudaUnaryKernel(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::UnaryOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaUnaryTensor(
 	benchmark::State& state)
@@ -494,89 +495,89 @@ BM_CudaUnaryTensor(
 				vext::Tensor<float, vext::Backend::CUDA> out(source);
 				timer.start();
 
-				if constexpr(Kp == vext::core::UnaryOp::ABS)
+				if constexpr(Kp == vext::Op::ABS)
 					{
-						out.abs();
+						vext::unary<vext::Op::ABS>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::SIN)
+				else if constexpr(Kp == vext::Op::SIN)
 					{
-						out.sin();
+						vext::unary<vext::Op::SIN>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::COS)
+				else if constexpr(Kp == vext::Op::COS)
 					{
-						out.cos();
+						vext::unary<vext::Op::COS>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::NEG)
+				else if constexpr(Kp == vext::Op::NEG)
 					{
-						-out;
+						vext::unary<vext::Op::NEG>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::EXP)
+				else if constexpr(Kp == vext::Op::EXP)
 					{
-						out.exp();
+						vext::unary<vext::Op::EXP>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::LOG)
+				else if constexpr(Kp == vext::Op::LOG)
 					{
-						out.log();
+						vext::unary<vext::Op::LOG>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::SQRT)
+				else if constexpr(Kp == vext::Op::SQRT)
 					{
-						out.sqrt();
+						vext::unary<vext::Op::SQRT>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::SQUARE)
+				else if constexpr(Kp == vext::Op::SQUARE)
 					{
-						out.square();
+						vext::unary<vext::Op::SQUARE>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::ROUND)
+				else if constexpr(Kp == vext::Op::ROUND)
 					{
-						out.round();
+						vext::unary<vext::Op::ROUND>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::SIGMOID)
+				else if constexpr(Kp == vext::Op::SIGMOID)
 					{
-						out.sigmoid();
+						vext::unary<vext::Op::SIGMOID>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::SOFT_RELU)
+				else if constexpr(Kp == vext::Op::SOFT_RELU)
 					{
-						out.soft_relu();
+						vext::unary<vext::Op::SOFT_RELU>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::RELU)
+				else if constexpr(Kp == vext::Op::RELU)
 					{
-						out.relu();
+						vext::unary<vext::Op::RELU>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::SOFTMAX)
+				else if constexpr(Kp == vext::Op::SOFTMAX)
 					{
-						out.softmax();
+						vext::unary<vext::Op::SOFTMAX>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::SOFTMIN)
+				else if constexpr(Kp == vext::Op::SOFTMIN)
 					{
-						out.softmin();
+						vext::unary<vext::Op::SOFTMIN>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::LOGSOFTMAX)
+				else if constexpr(Kp == vext::Op::LOGSOFTMAX)
 					{
-						out.log_softmax();
+						vext::unary<vext::Op::LOGSOFTMAX>(out);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::LEAKY_RELU)
+				else if constexpr(Kp == vext::Op::LEAKY_RELU)
 					{
-						out.leaky_relu(0.25f);
+						vext::unary<vext::Op::LEAKY_RELU>(out, 0.25f);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::ELU)
+				else if constexpr(Kp == vext::Op::ELU)
 					{
-						out.elu(0.25f);
+						vext::unary<vext::Op::ELU>(out, 0.25f);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::SWISH)
+				else if constexpr(Kp == vext::Op::SWISH)
 					{
-						out.swish(0.25f);
+						vext::unary<vext::Op::SWISH>(out, 0.25f);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::LINEAR)
+				else if constexpr(Kp == vext::Op::LINEAR)
 					{
-						out.linear(0.75f, 1.25f);
+						vext::unary<vext::Op::LINEAR>(out, 0.75f, 1.25f);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::CLIP)
+				else if constexpr(Kp == vext::Op::CLIP)
 					{
-						out.clip(0.25f, 0.75f);
+						vext::unary<vext::Op::CLIP>(out, 0.25f, 0.75f);
 					}
-				else if constexpr(Kp == vext::core::UnaryOp::POW)
+				else if constexpr(Kp == vext::Op::POW)
 					{
-						out.pow(0.75f, 1.25f);
+						vext::unary<vext::Op::POW>(out, 0.75f, 1.25f);
 					}
 
 				state.SetIterationTime(timer.stop_seconds());
@@ -592,7 +593,7 @@ BM_CudaUnaryTensor(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::ReductionOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaReductionKernel(
 	benchmark::State& state)
@@ -617,7 +618,7 @@ BM_CudaReductionKernel(
 	for([[maybe_unused]] auto iteration : state)
 		{
 			timer.start();
-			vext::core::cuda::operations::reduce<Kp>(out, values, 1, size, keep_dims, keep_strides, reduce_dims, reduce_strides);
+			vext::core::cuda::ops::reduce<Kp>(out, values, 1, size, keep_dims, keep_strides, reduce_dims, reduce_strides);
 			state.SetIterationTime(timer.stop_seconds());
 			benchmark::DoNotOptimize(out);
 		}
@@ -632,7 +633,7 @@ BM_CudaReductionKernel(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::ReductionOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaReductionTensor(
 	benchmark::State& state)
@@ -654,45 +655,45 @@ BM_CudaReductionTensor(
 			{
 				timer.start();
 
-				if constexpr(Kp == vext::core::ReductionOp::SUM)
+				if constexpr(Kp == vext::Op::SUM)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.sum();
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::reduction<vext::Op::SUM>(tensor);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::ReductionOp::MEAN)
+				else if constexpr(Kp == vext::Op::MEAN)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.mean();
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::reduction<vext::Op::MEAN>(tensor);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::ReductionOp::MAX)
+				else if constexpr(Kp == vext::Op::MAX)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.max();
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::reduction<vext::Op::MAX>(tensor);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::ReductionOp::MIN)
+				else if constexpr(Kp == vext::Op::MIN)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.min();
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::reduction<vext::Op::MIN>(tensor);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::ReductionOp::PROD)
+				else if constexpr(Kp == vext::Op::PROD)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.prod();
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::reduction<vext::Op::PROD>(tensor);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::ReductionOp::STD)
+				else if constexpr(Kp == vext::Op::STD)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.std();
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::reduction<vext::Op::STD>(tensor);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::ReductionOp::VAR)
+				else if constexpr(Kp == vext::Op::VAR)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = tensor.var();
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::reduction<vext::Op::VAR>(tensor);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
@@ -740,22 +741,22 @@ make_csr_tail(
 	return tail;
 }
 
-template <vext::core::CSRScatterOp Kp>
+template <vext::Op Kp>
 std::vector<float>
 make_csr_output_seed(
 	const std::uint32_t size)
 {
 	float value = 0.0f;
 
-	if constexpr(Kp == vext::core::CSRScatterOp::MIN)
+	if constexpr(Kp == vext::Op::MIN)
 		{
 			value = std::numeric_limits<float>::max();
 		}
-	else if constexpr(Kp == vext::core::CSRScatterOp::MAX)
+	else if constexpr(Kp == vext::Op::MAX)
 		{
 			value = std::numeric_limits<float>::lowest();
 		}
-	else if constexpr(Kp == vext::core::CSRScatterOp::PROD)
+	else if constexpr(Kp == vext::Op::PROD)
 		{
 			value = 1.0f;
 		}
@@ -764,7 +765,7 @@ make_csr_output_seed(
 	return seed;
 }
 
-template <vext::core::CSRScatterOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaCsrScatterKernel(
 	benchmark::State& state)
@@ -791,7 +792,7 @@ BM_CudaCsrScatterKernel(
 		{
 			cudaMemcpy(out, out_seed, size * sizeof(float), cudaMemcpyDeviceToDevice);
 			timer.start();
-			vext::core::cuda::operations::csr_scatter<Kp>(out, src, head, tail, rows, features);
+			vext::core::cuda::ops::csr_scatter<Kp>(out, src, head, tail, rows, features);
 			state.SetIterationTime(timer.stop_seconds());
 			benchmark::DoNotOptimize(out);
 		}
@@ -809,7 +810,7 @@ BM_CudaCsrScatterKernel(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::CSRScatterOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaCsrScatterTensor(
 	benchmark::State& state)
@@ -839,45 +840,45 @@ BM_CudaCsrScatterTensor(
 			{
 				timer.start();
 
-				if constexpr(Kp == vext::core::CSRScatterOp::SUM)
+				if constexpr(Kp == vext::Op::SUM)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = src.csr_scatter_sum(head, tail);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_scatter<vext::Op::SUM>(src, head, tail);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRScatterOp::MEAN)
+				else if constexpr(Kp == vext::Op::MEAN)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = src.csr_scatter_mean(head, tail);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_scatter<vext::Op::MEAN>(src, head, tail);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRScatterOp::MAX)
+				else if constexpr(Kp == vext::Op::MAX)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = src.csr_scatter_max(head, tail);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_scatter<vext::Op::MAX>(src, head, tail);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRScatterOp::MIN)
+				else if constexpr(Kp == vext::Op::MIN)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = src.csr_scatter_min(head, tail);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_scatter<vext::Op::MIN>(src, head, tail);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRScatterOp::PROD)
+				else if constexpr(Kp == vext::Op::PROD)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = src.csr_scatter_prod(head, tail);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_scatter<vext::Op::PROD>(src, head, tail);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRScatterOp::STD)
+				else if constexpr(Kp == vext::Op::STD)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = src.csr_scatter_std(head, tail);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_scatter<vext::Op::STD>(src, head, tail);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRScatterOp::VAR)
+				else if constexpr(Kp == vext::Op::VAR)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = src.csr_scatter_var(head, tail);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_scatter<vext::Op::VAR>(src, head, tail);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
@@ -892,7 +893,7 @@ BM_CudaCsrScatterTensor(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::CSRSpMVOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaCsrSpmvKernel(
 	benchmark::State& state)
@@ -917,7 +918,7 @@ BM_CudaCsrSpmvKernel(
 	for([[maybe_unused]] auto iteration : state)
 		{
 			timer.start();
-			vext::core::cuda::operations::csr_spmv<Kp>(out, values, head, tail, x, rows);
+			vext::core::cuda::ops::csr_spmv<Kp>(out, values, head, tail, x, rows);
 			state.SetIterationTime(timer.stop_seconds());
 			benchmark::DoNotOptimize(out);
 		}
@@ -935,7 +936,7 @@ BM_CudaCsrSpmvKernel(
 	vext::core::cuda::allocator::free();
 }
 
-template <vext::core::CSRSpMVOp Kp>
+template <vext::Op Kp>
 void
 BM_CudaCsrSpmvTensor(
 	benchmark::State& state)
@@ -966,45 +967,45 @@ BM_CudaCsrSpmvTensor(
 			{
 				timer.start();
 
-				if constexpr(Kp == vext::core::CSRSpMVOp::SUM)
+				if constexpr(Kp == vext::Op::SUM)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_sum(head, tail, x);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_spmv<vext::Op::SUM>(values, head, tail, x);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRSpMVOp::MEAN)
+				else if constexpr(Kp == vext::Op::MEAN)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_mean(head, tail, x);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_spmv<vext::Op::MEAN>(values, head, tail, x);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRSpMVOp::MAX)
+				else if constexpr(Kp == vext::Op::MAX)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_max(head, tail, x);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_spmv<vext::Op::MAX>(values, head, tail, x);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRSpMVOp::MIN)
+				else if constexpr(Kp == vext::Op::MIN)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_min(head, tail, x);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_spmv<vext::Op::MIN>(values, head, tail, x);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRSpMVOp::PROD)
+				else if constexpr(Kp == vext::Op::PROD)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_prod(head, tail, x);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_spmv<vext::Op::PROD>(values, head, tail, x);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRSpMVOp::STD)
+				else if constexpr(Kp == vext::Op::STD)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_std(head, tail, x);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_spmv<vext::Op::STD>(values, head, tail, x);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
-				else if constexpr(Kp == vext::core::CSRSpMVOp::VAR)
+				else if constexpr(Kp == vext::Op::VAR)
 					{
-						const vext::Tensor<float, vext::Backend::CUDA> out = values.csr_spmv_var(head, tail, x);
+						const vext::Tensor<float, vext::Backend::CUDA> out = vext::csr_spmv<vext::Op::VAR>(values, head, tail, x);
 						state.SetIterationTime(timer.stop_seconds());
 						observe_tensor(out);
 					}
@@ -1041,7 +1042,7 @@ BM_CudaMatmulKernel(
 	for([[maybe_unused]] auto iteration : state)
 		{
 			timer.start();
-			vext::core::cuda::operations::matmul(out, lhs, rhs, m, p, n);
+			vext::core::cuda::ops::matmul(out, lhs, rhs, m, p, n);
 			state.SetIterationTime(timer.stop_seconds());
 			benchmark::DoNotOptimize(out);
 		}
@@ -1078,7 +1079,7 @@ BM_CudaTensorMatmul(
 		for([[maybe_unused]] auto iteration : state)
 			{
 				timer.start();
-				const vext::Tensor<float, vext::Backend::CUDA> out = lhs.matmul(rhs);
+				const vext::Tensor<float, vext::Backend::CUDA> out = vext::matmul(lhs, rhs);
 				state.SetIterationTime(timer.stop_seconds());
 				observe_tensor(out);
 			}
@@ -1208,127 +1209,127 @@ BENCHMARK(BM_CudaAllocatorSmall)->Arg(4096)->Iterations(200000);
 BENCHMARK(BM_CudaAllocatorLarge)->Arg(32 * 1024 * 1024)->Iterations(128);
 BENCHMARK(BM_CudaTensorConstruct)->Args({ 4096, 4096 })->Iterations(32);
 
-BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOp::ADD)->Name("BM_CudaBinaryKernel/ADD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOp::ADD)->Name("BM_CudaBinaryTensor/ADD")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::core::BinaryOp::ADD)->Name("BM_CudaBinaryTensorInPlace/ADD")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOp::SUB)->Name("BM_CudaBinaryKernel/SUB")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOp::SUB)->Name("BM_CudaBinaryTensor/SUB")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::core::BinaryOp::SUB)->Name("BM_CudaBinaryTensorInPlace/SUB")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOp::MUL)->Name("BM_CudaBinaryKernel/MUL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOp::MUL)->Name("BM_CudaBinaryTensor/MUL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::core::BinaryOp::MUL)->Name("BM_CudaBinaryTensorInPlace/MUL")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOp::DIV)->Name("BM_CudaBinaryKernel/DIV")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOp::DIV)->Name("BM_CudaBinaryTensor/DIV")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::core::BinaryOp::DIV)->Name("BM_CudaBinaryTensorInPlace/DIV")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOp::POW)->Name("BM_CudaBinaryKernel/POW")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOp::POW)->Name("BM_CudaBinaryTensor/POW")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::core::BinaryOp::POW)->Name("BM_CudaBinaryTensorInPlace/POW")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOp::PRELU)->Name("BM_CudaBinaryKernel/PRELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::core::BinaryOp::PRELU)->Name("BM_CudaBinaryTensor/PRELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOp::MIN)->Name("BM_CudaBinaryKernel/MIN/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::core::BinaryOp::MAX)->Name("BM_CudaBinaryKernel/MAX/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::Op::ADD)->Name("BM_CudaBinaryKernel/ADD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::Op::ADD)->Name("BM_CudaBinaryTensor/ADD")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::Op::ADD)->Name("BM_CudaBinaryTensorInPlace/ADD")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::Op::SUB)->Name("BM_CudaBinaryKernel/SUB")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::Op::SUB)->Name("BM_CudaBinaryTensor/SUB")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::Op::SUB)->Name("BM_CudaBinaryTensorInPlace/SUB")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::Op::MUL)->Name("BM_CudaBinaryKernel/MUL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::Op::MUL)->Name("BM_CudaBinaryTensor/MUL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::Op::MUL)->Name("BM_CudaBinaryTensorInPlace/MUL")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::Op::DIV)->Name("BM_CudaBinaryKernel/DIV")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::Op::DIV)->Name("BM_CudaBinaryTensor/DIV")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::Op::DIV)->Name("BM_CudaBinaryTensorInPlace/DIV")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::Op::POW)->Name("BM_CudaBinaryKernel/POW")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::Op::POW)->Name("BM_CudaBinaryTensor/POW")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensorInPlace, vext::Op::POW)->Name("BM_CudaBinaryTensorInPlace/POW")->Args({ INPLACE_ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::Op::PRELU)->Name("BM_CudaBinaryKernel/PRELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryTensor, vext::Op::PRELU)->Name("BM_CudaBinaryTensor/PRELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::Op::MIN)->Name("BM_CudaBinaryKernel/MIN/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaBinaryKernel, vext::Op::MAX)->Name("BM_CudaBinaryKernel/MAX/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
 
-BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOp::EQUAL)->Name("BM_CudaLogicalKernel/EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOp::EQUAL)->Name("BM_CudaLogicalTensor/EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOp::NOT_EQUAL)->Name("BM_CudaLogicalKernel/NOT_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOp::NOT_EQUAL)->Name("BM_CudaLogicalTensor/NOT_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOp::LESS)->Name("BM_CudaLogicalKernel/LESS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOp::LESS)->Name("BM_CudaLogicalTensor/LESS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOp::LESS_EQUAL)->Name("BM_CudaLogicalKernel/LESS_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOp::LESS_EQUAL)->Name("BM_CudaLogicalTensor/LESS_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOp::GREATER)->Name("BM_CudaLogicalKernel/GREATER")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOp::GREATER)->Name("BM_CudaLogicalTensor/GREATER")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::core::LogicOp::GREATER_EQUAL)->Name("BM_CudaLogicalKernel/GREATER_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::core::LogicOp::GREATER_EQUAL)->Name("BM_CudaLogicalTensor/GREATER_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::Op::EQUAL)->Name("BM_CudaLogicalKernel/EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::Op::EQUAL)->Name("BM_CudaLogicalTensor/EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::Op::NOT_EQUAL)->Name("BM_CudaLogicalKernel/NOT_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::Op::NOT_EQUAL)->Name("BM_CudaLogicalTensor/NOT_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::Op::LESS)->Name("BM_CudaLogicalKernel/LESS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::Op::LESS)->Name("BM_CudaLogicalTensor/LESS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::Op::LESS_EQUAL)->Name("BM_CudaLogicalKernel/LESS_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::Op::LESS_EQUAL)->Name("BM_CudaLogicalTensor/LESS_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::Op::GREATER)->Name("BM_CudaLogicalKernel/GREATER")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::Op::GREATER)->Name("BM_CudaLogicalTensor/GREATER")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalKernel, vext::Op::GREATER_EQUAL)->Name("BM_CudaLogicalKernel/GREATER_EQUAL")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaLogicalTensor, vext::Op::GREATER_EQUAL)->Name("BM_CudaLogicalTensor/GREATER_EQUAL")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
 
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::ABS)->Name("BM_CudaUnaryKernel/ABS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::ABS)->Name("BM_CudaUnaryTensor/ABS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::SIN)->Name("BM_CudaUnaryKernel/SIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::SIN)->Name("BM_CudaUnaryTensor/SIN")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::COS)->Name("BM_CudaUnaryKernel/COS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::COS)->Name("BM_CudaUnaryTensor/COS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::TANH)->Name("BM_CudaUnaryKernel/TANH/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::NEG)->Name("BM_CudaUnaryKernel/NEG")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::NEG)->Name("BM_CudaUnaryTensor/NEG")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::EXP)->Name("BM_CudaUnaryKernel/EXP")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::EXP)->Name("BM_CudaUnaryTensor/EXP")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::LOG)->Name("BM_CudaUnaryKernel/LOG")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::LOG)->Name("BM_CudaUnaryTensor/LOG")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::SQRT)->Name("BM_CudaUnaryKernel/SQRT")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::SQRT)->Name("BM_CudaUnaryTensor/SQRT")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::SQUARE)->Name("BM_CudaUnaryKernel/SQUARE")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::SQUARE)->Name("BM_CudaUnaryTensor/SQUARE")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::ROUND)->Name("BM_CudaUnaryKernel/ROUND")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::ROUND)->Name("BM_CudaUnaryTensor/ROUND")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::SIGMOID)->Name("BM_CudaUnaryKernel/SIGMOID")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::SIGMOID)->Name("BM_CudaUnaryTensor/SIGMOID")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::SOFT_RELU)->Name("BM_CudaUnaryKernel/SOFT_RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::SOFT_RELU)->Name("BM_CudaUnaryTensor/SOFT_RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::RELU)->Name("BM_CudaUnaryKernel/RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::RELU)->Name("BM_CudaUnaryTensor/RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::SOFTMAX)->Name("BM_CudaUnaryKernel/SOFTMAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::SOFTMAX)->Name("BM_CudaUnaryTensor/SOFTMAX")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::SOFTMIN)->Name("BM_CudaUnaryKernel/SOFTMIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::SOFTMIN)->Name("BM_CudaUnaryTensor/SOFTMIN")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::LOGSOFTMAX)->Name("BM_CudaUnaryKernel/LOGSOFTMAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::LOGSOFTMAX)->Name("BM_CudaUnaryTensor/LOGSOFTMAX")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::LEAKY_RELU)->Name("BM_CudaUnaryKernel/LEAKY_RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::LEAKY_RELU)->Name("BM_CudaUnaryTensor/LEAKY_RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::ELU)->Name("BM_CudaUnaryKernel/ELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::ELU)->Name("BM_CudaUnaryTensor/ELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::SWISH)->Name("BM_CudaUnaryKernel/SWISH")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::SWISH)->Name("BM_CudaUnaryTensor/SWISH")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::LINEAR)->Name("BM_CudaUnaryKernel/LINEAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::LINEAR)->Name("BM_CudaUnaryTensor/LINEAR")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::CLIP)->Name("BM_CudaUnaryKernel/CLIP")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::CLIP)->Name("BM_CudaUnaryTensor/CLIP")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::core::UnaryOp::POW)->Name("BM_CudaUnaryKernel/UNARY_POW")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::core::UnaryOp::POW)->Name("BM_CudaUnaryTensor/UNARY_POW")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::ABS)->Name("BM_CudaUnaryKernel/ABS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::ABS)->Name("BM_CudaUnaryTensor/ABS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::SIN)->Name("BM_CudaUnaryKernel/SIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::SIN)->Name("BM_CudaUnaryTensor/SIN")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::COS)->Name("BM_CudaUnaryKernel/COS")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::COS)->Name("BM_CudaUnaryTensor/COS")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::TANH)->Name("BM_CudaUnaryKernel/TANH/kernel_only")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::NEG)->Name("BM_CudaUnaryKernel/NEG")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::NEG)->Name("BM_CudaUnaryTensor/NEG")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::EXP)->Name("BM_CudaUnaryKernel/EXP")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::EXP)->Name("BM_CudaUnaryTensor/EXP")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::LOG)->Name("BM_CudaUnaryKernel/LOG")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::LOG)->Name("BM_CudaUnaryTensor/LOG")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::SQRT)->Name("BM_CudaUnaryKernel/SQRT")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::SQRT)->Name("BM_CudaUnaryTensor/SQRT")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::SQUARE)->Name("BM_CudaUnaryKernel/SQUARE")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::SQUARE)->Name("BM_CudaUnaryTensor/SQUARE")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::ROUND)->Name("BM_CudaUnaryKernel/ROUND")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::ROUND)->Name("BM_CudaUnaryTensor/ROUND")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::SIGMOID)->Name("BM_CudaUnaryKernel/SIGMOID")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::SIGMOID)->Name("BM_CudaUnaryTensor/SIGMOID")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::SOFT_RELU)->Name("BM_CudaUnaryKernel/SOFT_RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::SOFT_RELU)->Name("BM_CudaUnaryTensor/SOFT_RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::RELU)->Name("BM_CudaUnaryKernel/RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::RELU)->Name("BM_CudaUnaryTensor/RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::SOFTMAX)->Name("BM_CudaUnaryKernel/SOFTMAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::SOFTMAX)->Name("BM_CudaUnaryTensor/SOFTMAX")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::SOFTMIN)->Name("BM_CudaUnaryKernel/SOFTMIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::SOFTMIN)->Name("BM_CudaUnaryTensor/SOFTMIN")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::LOGSOFTMAX)->Name("BM_CudaUnaryKernel/LOGSOFTMAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::LOGSOFTMAX)->Name("BM_CudaUnaryTensor/LOGSOFTMAX")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::LEAKY_RELU)->Name("BM_CudaUnaryKernel/LEAKY_RELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::LEAKY_RELU)->Name("BM_CudaUnaryTensor/LEAKY_RELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::ELU)->Name("BM_CudaUnaryKernel/ELU")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::ELU)->Name("BM_CudaUnaryTensor/ELU")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::SWISH)->Name("BM_CudaUnaryKernel/SWISH")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::SWISH)->Name("BM_CudaUnaryTensor/SWISH")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::LINEAR)->Name("BM_CudaUnaryKernel/LINEAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::LINEAR)->Name("BM_CudaUnaryTensor/LINEAR")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::CLIP)->Name("BM_CudaUnaryKernel/CLIP")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::CLIP)->Name("BM_CudaUnaryTensor/CLIP")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryKernel, vext::Op::POW)->Name("BM_CudaUnaryKernel/UNARY_POW")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaUnaryTensor, vext::Op::POW)->Name("BM_CudaUnaryTensor/UNARY_POW")->Args({ ELEMENT_COUNT, 1 })->Iterations(ELEMENT_ITERS)->UseManualTime();
 
-BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOp::SUM)->Name("BM_CudaReductionKernel/SUM")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOp::SUM)->Name("BM_CudaReductionTensor/SUM")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOp::MEAN)->Name("BM_CudaReductionKernel/MEAN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOp::MEAN)->Name("BM_CudaReductionTensor/MEAN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOp::MAX)->Name("BM_CudaReductionKernel/MAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOp::MAX)->Name("BM_CudaReductionTensor/MAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOp::MIN)->Name("BM_CudaReductionKernel/MIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOp::MIN)->Name("BM_CudaReductionTensor/MIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOp::PROD)->Name("BM_CudaReductionKernel/PROD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOp::PROD)->Name("BM_CudaReductionTensor/PROD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOp::STD)->Name("BM_CudaReductionKernel/STD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOp::STD)->Name("BM_CudaReductionTensor/STD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::core::ReductionOp::VAR)->Name("BM_CudaReductionKernel/VAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::core::ReductionOp::VAR)->Name("BM_CudaReductionTensor/VAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::Op::SUM)->Name("BM_CudaReductionKernel/SUM")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::Op::SUM)->Name("BM_CudaReductionTensor/SUM")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::Op::MEAN)->Name("BM_CudaReductionKernel/MEAN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::Op::MEAN)->Name("BM_CudaReductionTensor/MEAN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::Op::MAX)->Name("BM_CudaReductionKernel/MAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::Op::MAX)->Name("BM_CudaReductionTensor/MAX")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::Op::MIN)->Name("BM_CudaReductionKernel/MIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::Op::MIN)->Name("BM_CudaReductionTensor/MIN")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::Op::PROD)->Name("BM_CudaReductionKernel/PROD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::Op::PROD)->Name("BM_CudaReductionTensor/PROD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::Op::STD)->Name("BM_CudaReductionKernel/STD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::Op::STD)->Name("BM_CudaReductionTensor/STD")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionKernel, vext::Op::VAR)->Name("BM_CudaReductionKernel/VAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaReductionTensor, vext::Op::VAR)->Name("BM_CudaReductionTensor/VAR")->Arg(ELEMENT_COUNT)->Iterations(ELEMENT_ITERS)->UseManualTime();
 
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::core::CSRScatterOp::SUM)->Name("BM_CudaCsrScatterKernel/SUM")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::core::CSRScatterOp::SUM)->Name("BM_CudaCsrScatterTensor/SUM")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::core::CSRScatterOp::MEAN)->Name("BM_CudaCsrScatterKernel/MEAN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::core::CSRScatterOp::MEAN)->Name("BM_CudaCsrScatterTensor/MEAN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::core::CSRScatterOp::MAX)->Name("BM_CudaCsrScatterKernel/MAX")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::core::CSRScatterOp::MAX)->Name("BM_CudaCsrScatterTensor/MAX")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::core::CSRScatterOp::MIN)->Name("BM_CudaCsrScatterKernel/MIN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::core::CSRScatterOp::MIN)->Name("BM_CudaCsrScatterTensor/MIN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::core::CSRScatterOp::PROD)->Name("BM_CudaCsrScatterKernel/PROD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::core::CSRScatterOp::PROD)->Name("BM_CudaCsrScatterTensor/PROD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::core::CSRScatterOp::STD)->Name("BM_CudaCsrScatterKernel/STD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::core::CSRScatterOp::STD)->Name("BM_CudaCsrScatterTensor/STD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::core::CSRScatterOp::VAR)->Name("BM_CudaCsrScatterKernel/VAR")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::core::CSRScatterOp::VAR)->Name("BM_CudaCsrScatterTensor/VAR")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::Op::SUM)->Name("BM_CudaCsrScatterKernel/SUM")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::Op::SUM)->Name("BM_CudaCsrScatterTensor/SUM")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::Op::MEAN)->Name("BM_CudaCsrScatterKernel/MEAN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::Op::MEAN)->Name("BM_CudaCsrScatterTensor/MEAN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::Op::MAX)->Name("BM_CudaCsrScatterKernel/MAX")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::Op::MAX)->Name("BM_CudaCsrScatterTensor/MAX")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::Op::MIN)->Name("BM_CudaCsrScatterKernel/MIN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::Op::MIN)->Name("BM_CudaCsrScatterTensor/MIN")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::Op::PROD)->Name("BM_CudaCsrScatterKernel/PROD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::Op::PROD)->Name("BM_CudaCsrScatterTensor/PROD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::Op::STD)->Name("BM_CudaCsrScatterKernel/STD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::Op::STD)->Name("BM_CudaCsrScatterTensor/STD")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterKernel, vext::Op::VAR)->Name("BM_CudaCsrScatterKernel/VAR")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrScatterTensor, vext::Op::VAR)->Name("BM_CudaCsrScatterTensor/VAR")->Args({ CSR_ROWS, CSR_FEATURES, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
 
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOp::SUM)->Name("BM_CudaCsrSpmvKernel/SUM")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOp::SUM)->Name("BM_CudaCsrSpmvTensor/SUM")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOp::MEAN)->Name("BM_CudaCsrSpmvKernel/MEAN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOp::MEAN)->Name("BM_CudaCsrSpmvTensor/MEAN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOp::MAX)->Name("BM_CudaCsrSpmvKernel/MAX")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOp::MAX)->Name("BM_CudaCsrSpmvTensor/MAX")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOp::MIN)->Name("BM_CudaCsrSpmvKernel/MIN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOp::MIN)->Name("BM_CudaCsrSpmvTensor/MIN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOp::PROD)->Name("BM_CudaCsrSpmvKernel/PROD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOp::PROD)->Name("BM_CudaCsrSpmvTensor/PROD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOp::STD)->Name("BM_CudaCsrSpmvKernel/STD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOp::STD)->Name("BM_CudaCsrSpmvTensor/STD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::core::CSRSpMVOp::VAR)->Name("BM_CudaCsrSpmvKernel/VAR")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
-BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::core::CSRSpMVOp::VAR)->Name("BM_CudaCsrSpmvTensor/VAR")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::Op::SUM)->Name("BM_CudaCsrSpmvKernel/SUM")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::Op::SUM)->Name("BM_CudaCsrSpmvTensor/SUM")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::Op::MEAN)->Name("BM_CudaCsrSpmvKernel/MEAN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::Op::MEAN)->Name("BM_CudaCsrSpmvTensor/MEAN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::Op::MAX)->Name("BM_CudaCsrSpmvKernel/MAX")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::Op::MAX)->Name("BM_CudaCsrSpmvTensor/MAX")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::Op::MIN)->Name("BM_CudaCsrSpmvKernel/MIN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::Op::MIN)->Name("BM_CudaCsrSpmvTensor/MIN")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::Op::PROD)->Name("BM_CudaCsrSpmvKernel/PROD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::Op::PROD)->Name("BM_CudaCsrSpmvTensor/PROD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::Op::STD)->Name("BM_CudaCsrSpmvKernel/STD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::Op::STD)->Name("BM_CudaCsrSpmvTensor/STD")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvKernel, vext::Op::VAR)->Name("BM_CudaCsrSpmvKernel/VAR")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
+BENCHMARK_TEMPLATE(BM_CudaCsrSpmvTensor, vext::Op::VAR)->Name("BM_CudaCsrSpmvTensor/VAR")->Args({ CSR_ROWS, CSR_DEGREE })->Iterations(ELEMENT_ITERS)->UseManualTime();
 
 BENCHMARK(BM_CudaMatmulKernel)->Args({ MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE })->Iterations(MATMUL_ITERS)->UseManualTime();
 BENCHMARK(BM_CudaTensorMatmul)->Args({ MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE })->Iterations(MATMUL_ITERS)->UseManualTime();

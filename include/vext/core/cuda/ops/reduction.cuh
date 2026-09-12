@@ -57,7 +57,8 @@ axis_offset(
 
 // clang-format on
 
-template <ReductionOp Kp, typename T1, typename T2>
+template <Op Kp, typename T1, typename T2>
+requires core::ReductionOperation<Kp>
 __global__ void
 reduce(
 	T1* __restrict__ out,
@@ -71,15 +72,15 @@ reduce(
 		{
 			T1 accumulator = 0;
 
-			if constexpr(Kp == ReductionOp::PROD)
+			if constexpr(Kp == Op::PROD)
 				{
 					accumulator = 1;
 				}
-			else if constexpr(Kp == ReductionOp::MIN)
+			else if constexpr(Kp == Op::MIN)
 				{
 					accumulator = ::cuda::std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == ReductionOp::MAX)
+			else if constexpr(Kp == Op::MAX)
 				{
 					accumulator = ::cuda::std::numeric_limits<T1>::lowest();
 				}
@@ -90,23 +91,23 @@ reduce(
 				{
 					const std::uint64_t reduce_offset = axis_offset(j, reduce_meta);
 
-					if constexpr(Kp == ReductionOp::PROD)
+					if constexpr(Kp == Op::PROD)
 						{
 							accumulator *= static_cast<T1>(src[keep_offset + reduce_offset]);
 						}
-					else if constexpr(Kp == ReductionOp::MIN)
+					else if constexpr(Kp == Op::MIN)
 						{
 							accumulator = ::cuda::std::min(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
-					else if constexpr(Kp == ReductionOp::MAX)
+					else if constexpr(Kp == Op::MAX)
 						{
 							accumulator = ::cuda::std::max(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
 						}
-					else if constexpr(Kp == ReductionOp::L2_NORM)
+					else if constexpr(Kp == Op::L2_NORM)
 						{
 							accumulator += src[keep_offset + reduce_offset] * src[keep_offset + reduce_offset];
 						}
-					else if constexpr(Kp == ReductionOp::VAR || Kp == ReductionOp::STD)
+					else if constexpr(Kp == Op::VAR || Kp == Op::STD)
 						{
 							const float diff = src[keep_offset + reduce_offset] - out[i];
 							accumulator += diff * diff;
@@ -121,15 +122,15 @@ reduce(
 				{
 					const T2 shuffled = __shfl_down_sync(0xffffffff, accumulator, offset);
 
-					if constexpr(Kp == ReductionOp::PROD)
+					if constexpr(Kp == Op::PROD)
 						{
 							accumulator *= shuffled;
 						}
-					else if constexpr(Kp == ReductionOp::MIN)
+					else if constexpr(Kp == Op::MIN)
 						{
 							accumulator = (shuffled < accumulator) ? shuffled : accumulator;
 						}
-					else if constexpr(Kp == ReductionOp::MAX)
+					else if constexpr(Kp == Op::MAX)
 						{
 							accumulator = (shuffled > accumulator) ? shuffled : accumulator;
 						}
@@ -153,15 +154,15 @@ reduce(
 
 			T2 block_accumulate = 0;
 
-			if constexpr(Kp == ReductionOp::PROD)
+			if constexpr(Kp == Op::PROD)
 				{
 					block_accumulate = 1;
 				}
-			else if constexpr(Kp == ReductionOp::MIN)
+			else if constexpr(Kp == Op::MIN)
 				{
 					block_accumulate = ::cuda::std::numeric_limits<T1>::max();
 				}
-			else if constexpr(Kp == ReductionOp::MAX)
+			else if constexpr(Kp == Op::MAX)
 				{
 					block_accumulate = ::cuda::std::numeric_limits<T1>::lowest();
 				}
@@ -179,15 +180,15 @@ reduce(
 						{
 							const T2 shuffled = __shfl_down_sync(0xffffffff, block_accumulate, offset);
 
-							if constexpr(Kp == ReductionOp::PROD)
+							if constexpr(Kp == Op::PROD)
 								{
 									block_accumulate *= shuffled;
 								}
-							else if constexpr(Kp == ReductionOp::MIN)
+							else if constexpr(Kp == Op::MIN)
 								{
 									block_accumulate = (shuffled < block_accumulate) ? shuffled : block_accumulate;
 								}
-							else if constexpr(Kp == ReductionOp::MAX)
+							else if constexpr(Kp == Op::MAX)
 								{
 									block_accumulate = (shuffled > block_accumulate) ? shuffled : block_accumulate;
 								}
@@ -199,15 +200,15 @@ reduce(
 
 					if(lane == 0)
 						{
-							if constexpr(Kp == ReductionOp::MEAN || Kp == ReductionOp::VAR)
+							if constexpr(Kp == Op::MEAN || Kp == Op::VAR)
 								{
 									out[i] = block_accumulate / M;
 								}
-							else if constexpr(Kp == ReductionOp::STD)
+							else if constexpr(Kp == Op::STD)
 								{
 									out[i] = ::cuda::std::sqrt(block_accumulate / M);
 								}
-							else if constexpr(Kp == ReductionOp::L2_NORM)
+							else if constexpr(Kp == Op::L2_NORM)
 								{
 									out[i] = std::sqrt(block_accumulate);
 								}
@@ -227,7 +228,8 @@ reduce(
 namespace vext::core::cuda::ops
 {
 
-template <ReductionOp Kp, typename T1, typename T2>
+template <Op Kp, typename T1, typename T2>
+requires core::ReductionOperation<Kp>
 void
 reduce(
 	T1*                               out,
@@ -258,9 +260,9 @@ reduce(
 			reduce_meta.strides[i] = reduce_strides[i];
 		}
 
-	if constexpr(Kp == ReductionOp::VAR || Kp == ReductionOp::STD)
+	if constexpr(Kp == Op::VAR || Kp == Op::STD)
 		{
-			kernel::reduce<ReductionOp::MEAN><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta);
+			kernel::reduce<Op::MEAN><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta);
 			CUDA_CHECK(cudaGetLastError());
 
 			kernel::reduce<Kp><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta);

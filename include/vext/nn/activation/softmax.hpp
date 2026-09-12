@@ -20,12 +20,12 @@ public:
 	{
 		if constexpr(Mp == Mutation::IN_PLACE)
 			{
-				ops::unary<UnaryOp::SOFTMAX>(x);
+				unary<Op::SOFTMAX>(x);
 			}
 		else if constexpr(Mp == Mutation::COPY)
 			{
 				Tensor<float, Bp> copy(x);
-				ops::unary<UnaryOp::SOFTMAX>(copy);
+				unary<Op::SOFTMAX>(copy);
 
 				return copy;
 			}

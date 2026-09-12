@@ -17,12 +17,12 @@ public:
 	Linear(
 		const std::uint64_t& input,
 		const std::uint64_t& hidden_dim,
-		const float          negative_slop = 0.0)
+		const float          negative_slope = std::sqrt(5.0f))
 		: Module<Bp>(),
 		  __weight(input, hidden_dim),
 		  __bias(hidden_dim)
 	{
-		kaiming_uniform(__weight, std::sqrt(5.0f));
+		kaiming_uniform(__weight, negative_slope);
 		kaiming_uniform(__bias);
 
 		assign_parameter(&__weight);
@@ -34,7 +34,7 @@ public:
 	operator()(
 		const Tensor<float, Bp>& x) const
 	{
-		return ops::binary<BinaryOp::ADD>(ops::matmul(x, __weight), __bias);
+		return binary<Op::ADD>(matmul(x, __weight), __bias);
 	}
 
 private:

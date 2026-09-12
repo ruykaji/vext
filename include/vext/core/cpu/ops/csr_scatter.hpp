@@ -11,7 +11,8 @@
 namespace vext::core::cpu::ops
 {
 
-template <CSRScatterOp Kp, typename T1, typename T2>
+template <Op Kp, typename T1, typename T2>
+requires core::SparseReductionOperation<Kp>
 void
 csr_scatter(
 	T1* __restrict__ out,
@@ -23,7 +24,7 @@ csr_scatter(
 {
 	std::vector<float> mean_buffer;
 
-	if constexpr(Kp == CSRScatterOp::VAR || Kp == CSRScatterOp::STD)
+	if constexpr(Kp == Op::VAR || Kp == Op::STD)
 		{
 			mean_buffer.resize(S, 0);
 		}
@@ -40,15 +41,15 @@ csr_scatter(
 
 			for(std::uint32_t k = 0; k < S; ++k)
 				{
-					if constexpr(Kp == CSRScatterOp::PROD)
+					if constexpr(Kp == Op::PROD)
 						{
 							out[i * S + k] = 1;
 						}
-					else if constexpr(Kp == CSRScatterOp::MIN)
+					else if constexpr(Kp == Op::MIN)
 						{
 							out[i * S + k] = std::numeric_limits<T1>::max();
 						}
-					else if constexpr(Kp == CSRScatterOp::MAX)
+					else if constexpr(Kp == Op::MAX)
 						{
 							out[i * S + k] = std::numeric_limits<T1>::lowest();
 						}
@@ -60,15 +61,15 @@ csr_scatter(
 
 					for(std::uint32_t k = 0; k < S; ++k)
 						{
-							if constexpr(Kp == CSRScatterOp::PROD)
+							if constexpr(Kp == Op::PROD)
 								{
 									out[i * S + k] *= src[t * S + k];
 								}
-							else if constexpr(Kp == CSRScatterOp::MIN)
+							else if constexpr(Kp == Op::MIN)
 								{
 									out[i * S + k] = std::min<T1>(out[i * S + k], src[t * S + k]);
 								}
-							else if constexpr(Kp == CSRScatterOp::MAX)
+							else if constexpr(Kp == Op::MAX)
 								{
 									out[i * S + k] = std::max<T1>(out[i * S + k], src[t * S + k]);
 								}
@@ -79,7 +80,7 @@ csr_scatter(
 						}
 				}
 
-			if constexpr(Kp == CSRScatterOp::MEAN)
+			if constexpr(Kp == Op::MEAN)
 				{
 					const float scale = 1.0f / static_cast<float>(end - start);
 
@@ -88,7 +89,7 @@ csr_scatter(
 							out[i * S + k] *= scale;
 						}
 				}
-			else if constexpr(Kp == CSRScatterOp::VAR || Kp == CSRScatterOp::STD)
+			else if constexpr(Kp == Op::VAR || Kp == Op::STD)
 				{
 					const float scale = 1.0f / static_cast<float>(end - start);
 
@@ -111,7 +112,7 @@ csr_scatter(
 
 					for(std::uint32_t k = 0; k < S; ++k)
 						{
-							if constexpr(Kp == CSRScatterOp::VAR)
+							if constexpr(Kp == Op::VAR)
 								{
 									out[i * S + k] *= scale;
 								}

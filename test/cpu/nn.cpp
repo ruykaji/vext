@@ -135,8 +135,9 @@ TEST(NnCpu, ModuleIteratesRegisteredParameters)
 
 TEST(NnCpu, ModuleIteratorAllowsParameterMutation)
 {
-	ParameterModule module;
-	vext::ops::binary<vext::BinaryOp::ADD>(*module.begin(), vext::Tensor<float>({ 10.0f, 20.0f }));
+	ParameterModule      module;
+	vext::Tensor<float>& parameter = *module.begin();
+	vext::binary<vext::Op::ADD>(parameter, vext::Tensor<float>({ 10.0f, 20.0f }), parameter);
 
 	expect_tensor_near(module.first, { 11.0f, 22.0f });
 }

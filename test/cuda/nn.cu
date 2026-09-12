@@ -11,9 +11,9 @@
 #include <vext/nn/activation/relu.hpp>
 #include <vext/nn/activation/sigmoid.hpp>
 #include <vext/nn/activation/softmax.hpp>
+#include <vext/nn/init.hpp>
 #include <vext/nn/layer/linear.hpp>
 #include <vext/nn/module.hpp>
-#include <vext/nn/init.hpp>
 
 namespace
 {

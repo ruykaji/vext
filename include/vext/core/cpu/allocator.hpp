@@ -111,7 +111,7 @@ allocate(
 {
 	if(count == 0)
 		{
-			throw std::invalid_argument("Cannot allocate zero bytes");
+			throw std::invalid_argument("CPU allocator cannot allocate storage for zero elements.");
 		}
 
 	const std::uint64_t requested_size = count * sizeof(Tp);
