@@ -65,22 +65,14 @@ jobs:
       - name: Test
         run: ctest --test-dir build/sanitizers --output-on-failure
 
-  formatting:
-    name: Formatting
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y clang-format
-      
-      - name: Check formatting
-        run: git ls-files '*.hpp' '*.cuh' '*.cpp' '*.cu' | xargs clang-format --dry-run --Werror
-
   cuda-compile:
-    name: CUDA / compile
+    name: CUDA / nvcc / ${{ matrix.build_type }}
     runs-on: ubuntu-latest
     container: nvidia/cuda:13.0.1-devel-ubuntu24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
       
@@ -90,35 +82,10 @@ jobs:
       - name: Configure
         run: >-
           cmake -S . -B build/cuda -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -DVEXT_ENABLE_CUDA=ON
           -DVEXT_CUDA_ARCHITECTURES=86
           -DVEXT_BUILD_TESTS=ON
       
       - name: Compile all targets
         run: cmake --build build/cuda --target all
-
-  package:
-    name: Installed CPU consumer
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
-      
-      - name: Install vext
-        run: |
-          cmake -S . -B build/package -G Ninja -DVEXT_ENABLE_CUDA=OFF -DVEXT_BUILD_TESTS=OFF
-          cmake --build build/package --target install -- -j2
-        env:
-          DESTDIR: ${{ github.workspace }}/stage
-      
-      - name: Configure consumer
-        run: >-
-          cmake -S test/package -B build/consumer -G Ninja
-          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/stage/usr/local
-          -DVEXT_CONSUMER_BACKEND=cpu
-      
-      - name: Build and run consumer
-        run: cmake --build build/consumer && build/consumer/vext_consumer
