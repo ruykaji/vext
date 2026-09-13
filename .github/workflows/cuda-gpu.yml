@@ -10,24 +10,29 @@ jobs:
     runs-on: [self-hosted, linux, x64, cuda]
     steps:
       - uses: actions/checkout@v4
+      
       - name: Configure
         run: >-
           cmake -S . -B build/cuda-gpu -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DVEXT_ENABLE_CUDA=ON
           -DVEXT_BUILD_TESTS=ON
-          -DVEXT_BUILD_BENCHMARKS=ON
+      
       - name: Build all targets
         run: cmake --build build/cuda-gpu --target all
+      
       - name: Run all tests
         run: ctest --test-dir build/cuda-gpu --output-on-failure
+      
       - name: Install package
         run: cmake --install build/cuda-gpu --prefix "${{ runner.temp }}/vext-install"
+      
       - name: Configure CUDA consumer
         run: >-
           cmake -S test/package -B build/cuda-consumer -G Ninja
           -DCMAKE_PREFIX_PATH=${{ runner.temp }}/vext-install
           -DVEXT_CONSUMER_BACKEND=cuda
           -DCMAKE_CUDA_ARCHITECTURES=native
+
       - name: Build and run CUDA consumer
         run: cmake --build build/cuda-consumer && build/cuda-consumer/vext_consumer

@@ -13,8 +13,7 @@
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "VEXT_BUILD_TESTS": "ON",
-        "VEXT_BUILD_BENCHMARKS": "ON"
+        "VEXT_BUILD_TESTS": "ON"
       }
     },
     {
@@ -43,4 +42,3 @@
     }
   ]
 }
-

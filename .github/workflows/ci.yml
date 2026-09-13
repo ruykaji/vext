@@ -16,7 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libgtest-dev libbenchmark-dev
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libgtest-dev
+      
       - name: Select compiler
         run: |
           if [ "${{ matrix.compiler }}" = gcc ]; then
@@ -26,16 +27,18 @@ jobs:
             echo "CC=clang" >> "$GITHUB_ENV"
             echo "CXX=clang++" >> "$GITHUB_ENV"
           fi
+      
       - name: Configure
         run: >-
           cmake -S . -B build/ci -G Ninja
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -DVEXT_ENABLE_CUDA=OFF
           -DVEXT_BUILD_TESTS=ON
-          -DVEXT_BUILD_BENCHMARKS=ON
           -DVEXT_WARNINGS_AS_ERRORS=ON
+      
       - name: Build all targets
         run: cmake --build build/ci --target all
+      
       - name: Test
         run: ctest --test-dir build/ci --output-on-failure
 
@@ -44,18 +47,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libgtest-dev
+      
       - name: Configure
         run: >-
           cmake -S . -B build/sanitizers -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DVEXT_ENABLE_CUDA=OFF
           -DVEXT_BUILD_TESTS=ON
-          -DVEXT_BUILD_BENCHMARKS=OFF
           -DVEXT_ENABLE_SANITIZERS=ON
+      
       - name: Build
         run: cmake --build build/sanitizers --target all
+      
       - name: Test
         run: ctest --test-dir build/sanitizers --output-on-failure
 
@@ -64,8 +70,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Install clang-format
         run: sudo apt-get update && sudo apt-get install -y clang-format
+      
       - name: Check formatting
         run: git ls-files '*.hpp' '*.cuh' '*.cpp' '*.cu' | xargs clang-format --dry-run --Werror
 
@@ -75,8 +83,10 @@ jobs:
     container: nvidia/cuda:13.0.1-devel-ubuntu24.04
     steps:
       - uses: actions/checkout@v4
+      
       - name: Install dependencies
-        run: apt-get update && apt-get install -y cmake ninja-build libgtest-dev libbenchmark-dev
+        run: apt-get update && apt-get install -y cmake ninja-build libgtest-dev
+      
       - name: Configure
         run: >-
           cmake -S . -B build/cuda -G Ninja
@@ -84,7 +94,7 @@ jobs:
           -DVEXT_ENABLE_CUDA=ON
           -DVEXT_CUDA_ARCHITECTURES=86
           -DVEXT_BUILD_TESTS=ON
-          -DVEXT_BUILD_BENCHMARKS=ON
+      
       - name: Compile all targets
         run: cmake --build build/cuda --target all
 
@@ -93,18 +103,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+      
       - name: Install vext
         run: |
           cmake -S . -B build/package -G Ninja -DVEXT_ENABLE_CUDA=OFF -DVEXT_BUILD_TESTS=OFF
           cmake --build build/package --target install -- -j2
         env:
           DESTDIR: ${{ github.workspace }}/stage
+      
       - name: Configure consumer
         run: >-
           cmake -S test/package -B build/consumer -G Ninja
           -DCMAKE_PREFIX_PATH=${{ github.workspace }}/stage/usr/local
           -DVEXT_CONSUMER_BACKEND=cpu
+      
       - name: Build and run consumer
         run: cmake --build build/consumer && build/consumer/vext_consumer

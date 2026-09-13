@@ -4,7 +4,6 @@ project(vext VERSION 0.0.1 LANGUAGES CXX)
 
 option(VEXT_ENABLE_CUDA        "Build the CUDA backend when a CUDA toolchain is available" ON)
 option(VEXT_BUILD_TESTS        "Build the test suite"                                      ON)
-option(VEXT_BUILD_BENCHMARKS   "Build benchmarks"                                          ON)
 option(VEXT_ENABLE_SANITIZERS  "Enable AddressSanitizer and UndefinedBehaviorSanitizer"    OFF)
 option(VEXT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors"                         OFF)
 
@@ -92,13 +91,6 @@ endif()
 
 if(VEXT_BUILD_TESTS)
 	find_package(GTest REQUIRED)
-endif()
-
-if(VEXT_BUILD_BENCHMARKS)
-	find_package(benchmark REQUIRED)
-endif()
-
-if(VEXT_BUILD_TESTS OR VEXT_BUILD_BENCHMARKS)
 	add_subdirectory(test)
 endif()
 
@@ -157,9 +149,10 @@ write_basic_package_version_file(
 	COMPATIBILITY 
         SameMajorVersion
 )
-install(FILES
-	"${CMAKE_CURRENT_BINARY_DIR}/vextConfig.cmake"
-	"${CMAKE_CURRENT_BINARY_DIR}/vextConfigVersion.cmake"
+install(
+    FILES
+	    "${CMAKE_CURRENT_BINARY_DIR}/vextConfig.cmake"
+	    "${CMAKE_CURRENT_BINARY_DIR}/vextConfigVersion.cmake"
 	DESTINATION 
         "${CMAKE_INSTALL_LIBDIR}/cmake/vext"
 )
@@ -170,7 +163,6 @@ message(STATUS "CMake Version    : ${CMAKE_VERSION}")
 message(STATUS "C++ Standard     : ${CMAKE_CXX_STANDARD}")
 message(STATUS "CXX Compiler     : ${CMAKE_CXX_COMPILER}")
 message(STATUS "Build tests      : ${VEXT_BUILD_TESTS}")
-message(STATUS "Build benchmarks : ${VEXT_BUILD_BENCHMARKS}")
 message(STATUS "Build Type       : ${CMAKE_BUILD_TYPE}")
 message(STATUS "Debug Flags      : ${CMAKE_CXX_FLAGS_DEBUG}")
 message(STATUS "Release Flags    : ${CMAKE_CXX_FLAGS_RELEASE}")
