@@ -51,6 +51,11 @@ public:
 		Is... dims)
 		: __dims({ static_cast<std::uint32_t>(dims)... })
 	{
+		if constexpr(sizeof...(dims) == 0)
+			{
+				return;
+			}
+
 		compute_shape();
 		allocate();
 	}
@@ -374,6 +379,7 @@ private:
 			}
 
 		__strides.resize(size, 0);
+		__length = 1;
 
 		std::uint32_t stride = 1;
 
@@ -510,8 +516,8 @@ private:
 
 private:
 	T1*                        __ptr     = nullptr;
-	std::uint32_t              __length  = 1;
-	std::vector<std::uint32_t> __dims    = { 1 };
+	std::uint32_t              __length  = 0;
+	std::vector<std::uint32_t> __dims    = { 0 };
 	std::vector<std::uint32_t> __strides = {};
 };
 

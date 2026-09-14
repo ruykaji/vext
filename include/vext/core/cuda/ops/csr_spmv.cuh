@@ -7,6 +7,7 @@
 #include <cuda/std/cmath>
 #include <cuda_runtime.h>
 
+#include <vext/core/cuda/noise.cuh>
 #include <vext/core/type.hpp>
 #include <vext/type.hpp>
 
@@ -25,7 +26,7 @@
 namespace vext::core::cuda::ops::kernel
 {
 
-template <Op Kp, typename T1, typename T2, typename T3>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
 requires core::SparseReductionOperation<Kp>
 __global__ void
 csr_spmv(
@@ -34,7 +35,8 @@ csr_spmv(
 	const std::uint32_t* __restrict__ head,
 	const std::uint32_t* __restrict__ tail,
 	const T3* __restrict__ x,
-	const std::uint32_t N)
+	const std::uint32_t N,
+	const Dp            maybe_descriptor)
 {
 	for(std::uint32_t i = blockIdx.x; i < N; i += gridDim.x)
 		{
@@ -58,7 +60,16 @@ csr_spmv(
 
 			for(std::uint32_t h = start + threadIdx.x; h < end; h += blockDim.x)
 				{
-					const T1 prod = A[h] * x[tail[h]];
+					T1 prod = 0;
+
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							prod = (A[h] + noise(maybe_descriptor, h)) * x[tail[h]];
+						}
+					else
+						{
+							prod = A[h] * x[tail[h]];
+						}
 
 					if constexpr(Kp == Op::PROD)
 						{
@@ -191,7 +202,7 @@ csr_spmv(
 namespace vext::core::cuda::ops
 {
 
-template <Op Kp, typename T1, typename T2, typename T3>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3>
 requires core::SparseReductionOperation<Kp>
 void
 csr_spmv(
@@ -207,15 +218,35 @@ csr_spmv(
 
 	if constexpr(Kp == Op::VAR || Kp == Op::STD)
 		{
-			kernel::csr_spmv<Op::MEAN><<<grid_size, block_size>>>(y, A, head, tail, x, N);
-			CUDA_CHECK(cudaGetLastError());
+			if constexpr(Mp == ParameterMode::PERTURBED)
+				{
+					const NoiseDescriptor& descriptor = sequentional_noise_descriptor();
+					kernel::csr_spmv<Op::MEAN, Mp><<<grid_size, block_size>>>(y, A, head, tail, x, N, descriptor);
+					CUDA_CHECK(cudaGetLastError());
 
-			kernel::csr_spmv<Kp><<<grid_size, block_size>>>(y, A, head, tail, x, N);
-			CUDA_CHECK(cudaGetLastError());
+					kernel::csr_spmv<Kp, Mp><<<grid_size, block_size>>>(y, A, head, tail, x, N, descriptor);
+					CUDA_CHECK(cudaGetLastError());
+				}
+			else
+				{
+					kernel::csr_spmv<Op::MEAN, Mp><<<grid_size, block_size>>>(y, A, head, tail, x, N, core::no_value);
+					CUDA_CHECK(cudaGetLastError());
+
+					kernel::csr_spmv<Kp, Mp><<<grid_size, block_size>>>(y, A, head, tail, x, N, core::no_value);
+					CUDA_CHECK(cudaGetLastError());
+				}
 		}
 	else
 		{
-			kernel::csr_spmv<Kp><<<grid_size, block_size>>>(y, A, head, tail, x, N);
+			if constexpr(Mp == ParameterMode::PERTURBED)
+				{
+					kernel::csr_spmv<Kp, Mp><<<grid_size, block_size>>>(y, A, head, tail, x, N, sequentional_noise_descriptor());
+				}
+			else
+				{
+					kernel::csr_spmv<Kp, Mp><<<grid_size, block_size>>>(y, A, head, tail, x, N, core::no_value);
+				}
+
 			CUDA_CHECK(cudaGetLastError());
 		}
 }

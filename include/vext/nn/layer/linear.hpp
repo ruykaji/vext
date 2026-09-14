@@ -1,32 +1,27 @@
 #ifndef __VEXT_LINEAR_HPP__
 #define __VEXT_LINEAR_HPP__
 
-#include <vext/nn/init.hpp>
 #include <vext/nn/module.hpp>
 #include <vext/ops.hpp>
+#include <vext/optim/parameter.hpp>
 
 namespace vext::nn::layer
 {
 
-template <Backend Bp>
-class Linear : public Module<Bp>
+template <Backend Bp, ParameterMode Mp = ParameterMode::PLAIN>
+class Linear : public Module<Bp, Mp>
 {
-	VEXT_MODULE(Bp);
-
 public:
 	Linear(
 		const std::uint64_t& input,
 		const std::uint64_t& hidden_dim,
 		const float          negative_slope = std::sqrt(5.0f))
-		: Module<Bp>(),
+		: Module<Bp, Mp>(__weight, __bias),
 		  __weight(input, hidden_dim),
 		  __bias(hidden_dim)
 	{
-		kaiming_uniform(__weight, negative_slope);
-		kaiming_uniform(__bias);
-
-		assign_parameter(&__weight);
-		assign_parameter(&__bias);
+		__weight.kaiming_uniform(negative_slope);
+		__bias.kaiming_uniform();
 	}
 
 public:
@@ -34,12 +29,13 @@ public:
 	operator()(
 		const Tensor<float, Bp>& x) const
 	{
-		return binary<Op::ADD>(matmul(x, __weight), __bias);
+		const Tensor<float, Bp> transformed = matmul<Mp>(x, static_cast<const Tensor<float, Bp>&>(__weight));
+		return binary<Op::ADD, Mp>(transformed, static_cast<const Tensor<float, Bp>&>(__bias));
 	}
 
 private:
-	Tensor<float, Bp> __weight;
-	Tensor<float, Bp> __bias;
+	optim::Parameter<float, Bp, Mp> __weight;
+	optim::Parameter<float, Bp, Mp> __bias;
 };
 
 }

@@ -7,6 +7,7 @@
 #include <cuda/std/cmath>
 #include <cuda_runtime.h>
 
+#include <vext/core/cuda/noise.cuh>
 #include <vext/core/type.hpp>
 #include <vext/type.hpp>
 
@@ -25,7 +26,7 @@
 namespace vext::core::cuda::ops::kernel
 {
 
-template <Op Kp, typename T1, typename T2>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename Dp = core::no_value_t>
 requires core::SparseReductionOperation<Kp>
 __global__ void
 csr_scatter(
@@ -34,7 +35,8 @@ csr_scatter(
 	const std::uint32_t* __restrict__ head,
 	const std::uint32_t* __restrict__ tail,
 	const std::uint32_t N,
-	const std::uint32_t S)
+	const std::uint32_t S,
+	const Dp            maybe_descriptor)
 {
 	const std::uint32_t lane       = threadIdx.x % warpSize;
 	const std::uint32_t warp_id    = threadIdx.x / warpSize;
@@ -71,28 +73,69 @@ csr_scatter(
 
 					for(std::uint32_t h = start + lane; h < end; h += warpSize)
 						{
-							const std::uint32_t index = tail[h] * S + k;
-
 							if constexpr(Kp == Op::PROD)
 								{
-									accumulator *= src[index];
+									if constexpr(Mp == ParameterMode::PERTURBED)
+										{
+											const std::uint32_t index = tail[h] * S + k;
+											accumulator *= src[index] + noise(maybe_descriptor, index);
+										}
+									else
+										{
+											accumulator *= src[tail[h] * S + k];
+										}
 								}
 							else if constexpr(Kp == Op::MIN)
 								{
-									accumulator = ::cuda::std::min<T1>(accumulator, src[index]);
+									if constexpr(Mp == ParameterMode::PERTURBED)
+										{
+											const std::uint32_t index = tail[h] * S + k;
+											accumulator               = ::cuda::std::min<T1>(accumulator, src[index] + noise(maybe_descriptor, index));
+										}
+									else
+										{
+											accumulator = ::cuda::std::min<T1>(accumulator, src[tail[h] * S + k]);
+										}
 								}
 							else if constexpr(Kp == Op::MAX)
 								{
-									accumulator = ::cuda::std::max<T1>(accumulator, src[index]);
+									if constexpr(Mp == ParameterMode::PERTURBED)
+										{
+											const std::uint32_t index = tail[h] * S + k;
+											accumulator               = ::cuda::std::max<T1>(accumulator, src[index] + noise(maybe_descriptor, index));
+										}
+									else
+										{
+											accumulator = ::cuda::std::max<T1>(accumulator, src[tail[h] * S + k]);
+										}
 								}
 							else if constexpr(Kp == Op::VAR || Kp == Op::STD)
 								{
-									const float diff = src[index] - out[i * S + k];
+									float diff = 0.0f;
+
+									if constexpr(Mp == ParameterMode::PERTURBED)
+										{
+											const std::uint32_t index = tail[h] * S + k;
+											diff                      = (src[index] + noise(maybe_descriptor, index)) - out[i * S + k];
+										}
+									else
+										{
+											diff = src[tail[h] * S + k] - out[i * S + k];
+										}
+
 									accumulator += diff * diff;
 								}
 							else
 								{
-									accumulator += src[index];
+									if constexpr(Mp == ParameterMode::PERTURBED)
+										{
+											const std::uint32_t index = tail[h] * S + k;
+											accumulator += src[index] + noise(maybe_descriptor, index);
+										}
+									else
+										{
+											accumulator += src[tail[h] * S + k];
+										}
 								}
 						}
 
@@ -142,7 +185,7 @@ csr_scatter(
 namespace vext::core::cuda::ops
 {
 
-template <Op Kp, typename T1, typename T2>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2>
 requires core::SparseReductionOperation<Kp>
 void
 csr_scatter(
@@ -158,15 +201,35 @@ csr_scatter(
 
 	if constexpr(Kp == Op::VAR || Kp == Op::STD)
 		{
-			kernel::csr_scatter<Op::MEAN><<<grid_size, block_size>>>(out, src, head, tail, N, S);
-			CUDA_CHECK(cudaGetLastError());
+			if constexpr(Mp == ParameterMode::PERTURBED)
+				{
+					const NoiseDescriptor& descriptor = sequentional_noise_descriptor();
+					kernel::csr_scatter<Op::MEAN, Mp><<<grid_size, block_size>>>(out, src, head, tail, N, S, descriptor);
+					CUDA_CHECK(cudaGetLastError());
 
-			kernel::csr_scatter<Kp><<<grid_size, block_size>>>(out, src, head, tail, N, S);
-			CUDA_CHECK(cudaGetLastError());
+					kernel::csr_scatter<Kp, Mp><<<grid_size, block_size>>>(out, src, head, tail, N, S, descriptor);
+					CUDA_CHECK(cudaGetLastError());
+				}
+			else
+				{
+					kernel::csr_scatter<Op::MEAN, Mp><<<grid_size, block_size>>>(out, src, head, tail, N, S, core::no_value);
+					CUDA_CHECK(cudaGetLastError());
+
+					kernel::csr_scatter<Kp, Mp><<<grid_size, block_size>>>(out, src, head, tail, N, S, core::no_value);
+					CUDA_CHECK(cudaGetLastError());
+				}
 		}
 	else
 		{
-			kernel::csr_scatter<Kp><<<grid_size, block_size>>>(out, src, head, tail, N, S);
+			if constexpr(Mp == ParameterMode::PERTURBED)
+				{
+					kernel::csr_scatter<Kp, Mp><<<grid_size, block_size>>>(out, src, head, tail, N, S, sequentional_noise_descriptor());
+				}
+			else
+				{
+					kernel::csr_scatter<Kp, Mp><<<grid_size, block_size>>>(out, src, head, tail, N, S, core::no_value);
+				}
+
 			CUDA_CHECK(cudaGetLastError());
 		}
 }

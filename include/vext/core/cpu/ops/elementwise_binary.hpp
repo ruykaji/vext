@@ -4,13 +4,14 @@
 #include <cmath>
 #include <vector>
 
+#include <vext/core/cpu/noise.hpp>
 #include <vext/core/type.hpp>
 #include <vext/type.hpp>
 
 namespace vext::core::cpu::ops
 {
 
-template <Op Kp, typename T1, typename T2, typename T3>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3>
 requires core::BinaryOperation<Kp>
 static void
 binary(
@@ -23,40 +24,96 @@ binary(
 		{
 			if constexpr(Kp == Op::ADD)
 				{
-					out[i] = a[i] + b[i];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] + (b[i] + noise(i));
+						}
+					else
+						{
+							out[i] = a[i] + b[i];
+						}
 				}
 			else if constexpr(Kp == Op::SUB)
 				{
-					out[i] = a[i] - b[i];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] - (b[i] + noise(i));
+						}
+					else
+						{
+							out[i] = a[i] - b[i];
+						}
 				}
 			else if constexpr(Kp == Op::MUL)
 				{
-					out[i] = a[i] * b[i];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] * (b[i] + noise(i));
+						}
+					else
+						{
+							out[i] = a[i] * b[i];
+						}
 				}
 			else if constexpr(Kp == Op::DIV)
 				{
-					out[i] = a[i] / b[i];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] / (b[i] + noise(i));
+						}
+					else
+						{
+							out[i] = a[i] / b[i];
+						}
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-					out[i] = std::pow(a[i], b[i]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = std::pow(a[i], (b[i] + noise(i)));
+						}
+					else
+						{
+							out[i] = std::pow(a[i], b[i]);
+						}
 				}
 			else if constexpr(Kp == Op::MIN)
 				{
-					out[i] = std::min(a[i], b[i]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = std::min(a[i], (b[i] + noise(i)));
+						}
+					else
+						{
+							out[i] = std::min(a[i], b[i]);
+						}
 				}
 			else if constexpr(Kp == Op::MAX)
 				{
-					out[i] = std::max(a[i], b[i]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = std::max(a[i], (b[i] + noise(i)));
+						}
+					else
+						{
+							out[i] = std::max(a[i], b[i]);
+						}
 				}
 			else if constexpr(Kp == Op::PRELU)
 				{
-					out[i] = std::max<T1>(0, a[i]) + b[i] * std::min<T1>(0, a[i]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = std::max<T1>(0, a[i]) + (b[i] + noise(i)) * std::min<T1>(0, a[i]);
+						}
+					else
+						{
+							out[i] = std::max<T1>(0, a[i]) + b[i] * std::min<T1>(0, a[i]);
+						}
 				}
 		}
 }
 
-template <Op Kp, typename T1, typename T2, typename T3>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3>
 requires core::BinaryOperation<Kp>
 static void
 binary_with_broadcast(
@@ -78,44 +135,92 @@ binary_with_broadcast(
 		{
 			if constexpr(Kp == Op::ADD)
 				{
-
-					out[i] = a[i] + b[b_offset];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] + (b[b_offset] + noise(b_offset));
+						}
+					else
+						{
+							out[i] = a[i] + b[b_offset];
+						}
 				}
 			else if constexpr(Kp == Op::SUB)
 				{
-
-					out[i] = a[i] - b[b_offset];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] - (b[b_offset] + noise(b_offset));
+						}
+					else
+						{
+							out[i] = a[i] - b[b_offset];
+						}
 				}
 			else if constexpr(Kp == Op::MUL)
 				{
-
-					out[i] = a[i] * b[b_offset];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] * (b[b_offset] + noise(b_offset));
+						}
+					else
+						{
+							out[i] = a[i] * b[b_offset];
+						}
 				}
 			else if constexpr(Kp == Op::DIV)
 				{
-
-					out[i] = a[i] / b[b_offset];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] / (b[b_offset] + noise(b_offset));
+						}
+					else
+						{
+							out[i] = a[i] / b[b_offset];
+						}
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-
-					out[i] = std::pow(a[i], b[b_offset]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = std::pow(a[i], (b[b_offset] + noise(b_offset)));
+						}
+					else
+						{
+							out[i] = std::pow(a[i], b[b_offset]);
+						}
 				}
 			else if constexpr(Kp == Op::MIN)
 				{
-
-					out[i] = std::min(a[i], b[b_offset]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = std::min(a[i], (b[b_offset] + noise(b_offset)));
+						}
+					else
+						{
+							out[i] = std::min(a[i], b[b_offset]);
+						}
 				}
 			else if constexpr(Kp == Op::MAX)
 				{
-
-					out[i] = std::max(a[i], b[b_offset]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = std::max(a[i], (b[b_offset] + noise(b_offset)));
+						}
+					else
+						{
+							out[i] = std::max(a[i], b[b_offset]);
+						}
 				}
 			else if constexpr(Kp == Op::PRELU)
 				{
-					out[i] = std::max<T1>(0, a[i]) + b[b_offset] * std::min<T1>(0, a[i]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = std::max<T1>(0, a[i]) + (b[b_offset] + noise(b_offset)) * std::min<T1>(0, a[i]);
+						}
+					else
+						{
+							out[i] = std::max<T1>(0, a[i]) + b[b_offset] * std::min<T1>(0, a[i]);
+						}
 				}
-
 			for(std::uint32_t j = dims_count - 1;; --j)
 				{
 					++index[j];

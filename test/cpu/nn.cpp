@@ -12,12 +12,27 @@
 #include <vext/nn/activation/relu.hpp>
 #include <vext/nn/activation/sigmoid.hpp>
 #include <vext/nn/activation/softmax.hpp>
-#include <vext/nn/init.hpp>
 #include <vext/nn/layer/linear.hpp>
 #include <vext/nn/module.hpp>
 
 namespace
 {
+
+float
+noise_value(
+	const std::uint32_t seed,
+	const std::uint32_t counter,
+	const std::uint32_t index)
+{
+	std::uint32_t hash = seed ^ (counter * 0x85ebca6bu) ^ (index * 0x9e3779b9u);
+	hash ^= hash >> 16;
+	hash *= 0x7feb352du;
+	hash ^= hash >> 15;
+	hash *= 0x846ca68bu;
+	hash ^= hash >> 16;
+
+	return static_cast<float>(hash >> 8) * (1.0f / 16777216.0f);
+}
 
 void
 expect_shape_eq(
@@ -67,39 +82,36 @@ expect_tensor_between(
 		}
 }
 
-class ParameterModule : public vext::nn::Module<vext::Backend::CPU>
+template <vext::ParameterMode Mp = vext::ParameterMode::PLAIN>
+class ParameterModule : public vext::nn::Module<vext::Backend::CPU, Mp>
 {
-	VEXT_MODULE(vext::Backend::CPU);
-
 public:
 	ParameterModule()
-		: first({ 1.0f, 2.0f }),
-		  second({ { 3.0f, 4.0f }, { 5.0f, 6.0f } })
+		: vext::nn::Module<vext::Backend::CPU, Mp>(first, second),
+		  first(2),
+		  second(2, 2)
 	{
-		assign_parameter(&first);
-		assign_parameter(&second);
+		static_cast<vext::Tensor<float>&>(first).set_from({ 1.0f, 2.0f });
+		static_cast<vext::Tensor<float>&>(second).set_from({ 3.0f, 4.0f, 5.0f, 6.0f });
 	}
 
-	vext::Tensor<float> first;
-	vext::Tensor<float> second;
+	vext::optim::Parameter<float, vext::Backend::CPU, Mp> first;
+	vext::optim::Parameter<float, vext::Backend::CPU, Mp> second;
 };
 
 class ParentModule : public vext::nn::Module<vext::Backend::CPU>
 {
-	VEXT_MODULE(vext::Backend::CPU);
-
 public:
 	ParentModule()
-		: parent_parameter({ 7.0f, 8.0f })
+		: vext::nn::Module<vext::Backend::CPU>(parent_parameter, left, right),
+		  parent_parameter(2)
 	{
-		assign_parameter(&parent_parameter);
-		assign_module(&left);
-		assign_module(&right);
+		static_cast<vext::Tensor<float>&>(parent_parameter).set_from({ 7.0f, 8.0f });
 	}
 
-	vext::Tensor<float> parent_parameter;
-	ParameterModule     left;
-	ParameterModule     right;
+	vext::optim::Parameter<float, vext::Backend::CPU> parent_parameter;
+	ParameterModule<>                                 left;
+	ParameterModule<>                                 right;
 };
 
 }
@@ -114,18 +126,18 @@ TEST(NnCpu, EmptyModuleHasNoParameters)
 
 TEST(NnCpu, ModuleIteratesRegisteredParameters)
 {
-	ParameterModule module;
+	ParameterModule<> module;
 
 	vext::nn::Module<vext::Backend::CPU>::iterator it = module.begin();
 
 	ASSERT_NE(it, module.end());
-	expect_shape_eq(it->dims(), { 2 });
+	expect_shape_eq(static_cast<const vext::Tensor<float>&>(*it).dims(), { 2 });
 	expect_tensor_near(*it, { 1.0f, 2.0f });
 
 	++it;
 
 	ASSERT_NE(it, module.end());
-	expect_shape_eq(it->dims(), { 2, 2 });
+	expect_shape_eq(static_cast<const vext::Tensor<float>&>(*it).dims(), { 2, 2 });
 	expect_tensor_near(*it, { 3.0f, 4.0f, 5.0f, 6.0f });
 
 	++it;
@@ -135,8 +147,8 @@ TEST(NnCpu, ModuleIteratesRegisteredParameters)
 
 TEST(NnCpu, ModuleIteratorAllowsParameterMutation)
 {
-	ParameterModule      module;
-	vext::Tensor<float>& parameter = *module.begin();
+	ParameterModule<>    module;
+	vext::Tensor<float>& parameter = static_cast<vext::Tensor<float>&>(*module.begin());
 	vext::binary<vext::Op::ADD>(parameter, vext::Tensor<float>({ 10.0f, 20.0f }), parameter);
 
 	expect_tensor_near(module.first, { 11.0f, 22.0f });
@@ -144,18 +156,18 @@ TEST(NnCpu, ModuleIteratorAllowsParameterMutation)
 
 TEST(NnCpu, ConstModuleIteratesConstParameters)
 {
-	const ParameterModule                                module;
+	const ParameterModule<>                              module;
 	vext::nn::Module<vext::Backend::CPU>::const_iterator it = module.begin();
 
 	static_assert(std::is_const_v<std::remove_reference_t<decltype(*it)>>);
 
 	ASSERT_NE(it, module.end());
-	expect_shape_eq(it->dims(), { 2 });
+	expect_shape_eq(static_cast<const vext::Tensor<float>&>(*it).dims(), { 2 });
 
 	++it;
 
 	ASSERT_NE(it, module.end());
-	expect_shape_eq(it->dims(), { 2, 2 });
+	expect_shape_eq(static_cast<const vext::Tensor<float>&>(*it).dims(), { 2, 2 });
 }
 
 TEST(NnCpu, ModuleRecursivelyIteratesChildParameters)
@@ -166,7 +178,7 @@ TEST(NnCpu, ModuleRecursivelyIteratesChildParameters)
 
 	for(const auto& parameter : module)
 		{
-			shapes.emplace_back(parameter.dims());
+			shapes.emplace_back(static_cast<const vext::Tensor<float>&>(parameter).dims());
 		}
 
 	ASSERT_EQ(shapes.size(), 5);
@@ -179,13 +191,13 @@ TEST(NnCpu, ModuleRecursivelyIteratesChildParameters)
 
 TEST(NnCpu, ModuleIteratorPostIncrementReturnsPreviousParameter)
 {
-	ParameterModule                                module;
+	ParameterModule<>                              module;
 	vext::nn::Module<vext::Backend::CPU>::iterator it = module.begin();
 
 	const vext::nn::Module<vext::Backend::CPU>::iterator previous = it++;
 
-	expect_shape_eq(previous->dims(), { 2 });
-	expect_shape_eq(it->dims(), { 2, 2 });
+	expect_shape_eq(static_cast<const vext::Tensor<float>&>(*previous).dims(), { 2 });
+	expect_shape_eq(static_cast<const vext::Tensor<float>&>(*it).dims(), { 2, 2 });
 }
 
 TEST(NnCpu, ModuleIteratorDefaultConstructedValuesCompareEqual)
@@ -258,18 +270,12 @@ TEST(NnCpu, ActivationEluUsesProvidedAlpha)
 	expect_tensor_near(input, { 2.0f * (std::exp(-1.0f) - 1.0f), 2.0f });
 }
 
-TEST(NnCpu, CalculateFanInAndFanOutHandlesVectorsMatricesAndKernels)
-{
-	EXPECT_EQ(vext::nn::calculate_fan_in_and_fan_out({ 5 }), (std::pair<std::uint64_t, std::uint64_t>{ 1, 5 }));
-	EXPECT_EQ(vext::nn::calculate_fan_in_and_fan_out({ 3, 2 }), (std::pair<std::uint64_t, std::uint64_t>{ 2, 3 }));
-	EXPECT_EQ(vext::nn::calculate_fan_in_and_fan_out({ 16, 3, 5, 5 }), (std::pair<std::uint64_t, std::uint64_t>{ 75, 400 }));
-}
-
 TEST(NnCpu, XavierUniformInitializesFiniteValuesWithinExpectedBounds)
 {
-	vext::Tensor<float> weight(4, 8);
+	vext::optim::Parameter<float, vext::Backend::CPU> parameter(4, 8);
 
-	vext::nn::xavier_uniform(weight);
+	parameter.xavier_uniform();
+	const vext::Tensor<float>& weight = parameter;
 
 	const float sigma = 2.0f / (8.0f + 4.0f);
 	const float bound = std::sqrt(3.0f * sigma);
@@ -281,9 +287,10 @@ TEST(NnCpu, XavierUniformInitializesFiniteValuesWithinExpectedBounds)
 
 TEST(NnCpu, XavierNormalInitializesFiniteValues)
 {
-	vext::Tensor<float> weight(4, 8);
+	vext::optim::Parameter<float, vext::Backend::CPU> parameter(4, 8);
 
-	vext::nn::xavier_normal(weight);
+	parameter.xavier_normal();
+	const vext::Tensor<float>& weight = parameter;
 
 	expect_shape_eq(weight.dims(), { 4, 8 });
 	expect_tensor_finite(weight);
@@ -291,10 +298,11 @@ TEST(NnCpu, XavierNormalInitializesFiniteValues)
 
 TEST(NnCpu, KaimingUniformInitializesFiniteValuesWithinExpectedBounds)
 {
-	vext::Tensor<float> weight(4, 8);
-	const float         alpha = 0.25f;
+	vext::optim::Parameter<float, vext::Backend::CPU> parameter(4, 8);
+	const float                                       alpha = 0.25f;
 
-	vext::nn::kaiming_uniform(weight, alpha);
+	parameter.kaiming_uniform(alpha);
+	const vext::Tensor<float>& weight = parameter;
 
 	const float gain  = std::sqrt(2.0f / (1.0f + alpha));
 	const float bound = gain * std::sqrt(3.0f / 8.0f);
@@ -306,9 +314,10 @@ TEST(NnCpu, KaimingUniformInitializesFiniteValuesWithinExpectedBounds)
 
 TEST(NnCpu, KaimingNormalInitializesFiniteValues)
 {
-	vext::Tensor<float> weight(4, 8);
+	vext::optim::Parameter<float, vext::Backend::CPU> parameter(4, 8);
 
-	vext::nn::kaiming_normal(weight, 0.25f);
+	parameter.kaiming_normal(0.25f);
+	const vext::Tensor<float>& weight = parameter;
 
 	expect_shape_eq(weight.dims(), { 4, 8 });
 	expect_tensor_finite(weight);
@@ -321,13 +330,13 @@ TEST(NnCpu, LinearRegistersWeightAndBiasParameters)
 	vext::nn::Module<vext::Backend::CPU>::iterator it = layer.begin();
 
 	ASSERT_NE(it, layer.end());
-	expect_shape_eq(it->dims(), { 3, 4 });
+	expect_shape_eq(static_cast<const vext::Tensor<float>&>(*it).dims(), { 3, 4 });
 	expect_tensor_finite(*it);
 
 	++it;
 
 	ASSERT_NE(it, layer.end());
-	expect_shape_eq(it->dims(), { 4 });
+	expect_shape_eq(static_cast<const vext::Tensor<float>&>(*it).dims(), { 4 });
 	expect_tensor_finite(*it);
 
 	++it;
@@ -344,4 +353,35 @@ TEST(NnCpu, LinearForwardProducesExpectedOutputShapeAndFiniteValues)
 
 	expect_shape_eq(output.dims(), { 2, 4 });
 	expect_tensor_finite(output);
+}
+
+TEST(NnCpuNoise, PerturbedLinearUsesEachParametersConfiguredSeed)
+{
+	constexpr std::uint32_t weight_seed = 101;
+	constexpr std::uint32_t bias_seed   = 202;
+
+	vext::nn::layer::Linear<vext::Backend::CPU, vext::ParameterMode::PLAIN> plain(2, 2);
+	auto                                                                    plain_parameter = plain.begin();
+	static_cast<vext::Tensor<float>&>(*plain_parameter).set_from({ 1.0f, 1.0f, 1.0f, 1.0f });
+	++plain_parameter;
+	static_cast<vext::Tensor<float>&>(*plain_parameter).set_from({ 0.0f, 0.0f });
+
+	vext::nn::layer::Linear<vext::Backend::CPU, vext::ParameterMode::PERTURBED> perturbed(2, 2);
+	auto                                                                        perturbed_parameter = perturbed.begin();
+	static_cast<vext::Tensor<float>&>(*perturbed_parameter).set_from({ 1.0f, 1.0f, 1.0f, 1.0f });
+	perturbed_parameter->set_seed({ weight_seed });
+	++perturbed_parameter;
+	static_cast<vext::Tensor<float>&>(*perturbed_parameter).set_from({ 0.0f, 0.0f });
+	perturbed_parameter->set_seed({ bias_seed });
+
+	vext::core::cpu::NoiseDescriptor& descriptor = vext::core::cpu::sequentional_noise_descriptor();
+	descriptor.seed                              = 0;
+	descriptor.counter                           = 0;
+	descriptor.direction                         = 1;
+
+	const vext::Tensor<float> input({ { 1.0f, 2.0f } });
+	expect_tensor_near(plain(input), { 3.0f, 3.0f });
+
+	const vext::Tensor<float> output = perturbed(input);
+	expect_tensor_near(output, { 1.0f * (1.0f + noise_value(weight_seed, 1, 0)) + 2.0f * (1.0f + noise_value(weight_seed, 1, 2)) + noise_value(bias_seed, 2, 0), 1.0f * (1.0f + noise_value(weight_seed, 1, 1)) + 2.0f * (1.0f + noise_value(weight_seed, 1, 3)) + noise_value(bias_seed, 2, 1) });
 }
