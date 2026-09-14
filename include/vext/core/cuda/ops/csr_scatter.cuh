@@ -3,7 +3,6 @@
 
 #include <iostream>
 
-#include <cuda/std/algorithm>
 #include <cuda/std/cmath>
 #include <cuda_runtime.h>
 
@@ -90,11 +89,13 @@ csr_scatter(
 									if constexpr(Mp == ParameterMode::PERTURBED)
 										{
 											const std::uint32_t index = tail[h] * S + k;
-											accumulator               = ::cuda::std::min<T1>(accumulator, src[index] + noise(maybe_descriptor, index));
+											const T1            value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
+											accumulator               = (value < accumulator) ? value : accumulator;
 										}
 									else
 										{
-											accumulator = ::cuda::std::min<T1>(accumulator, src[tail[h] * S + k]);
+											const T1 value = static_cast<T1>(src[tail[h] * S + k]);
+											accumulator    = (value < accumulator) ? value : accumulator;
 										}
 								}
 							else if constexpr(Kp == Op::MAX)
@@ -102,11 +103,13 @@ csr_scatter(
 									if constexpr(Mp == ParameterMode::PERTURBED)
 										{
 											const std::uint32_t index = tail[h] * S + k;
-											accumulator               = ::cuda::std::max<T1>(accumulator, src[index] + noise(maybe_descriptor, index));
+											const T1            value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
+											accumulator               = (accumulator < value) ? value : accumulator;
 										}
 									else
 										{
-											accumulator = ::cuda::std::max<T1>(accumulator, src[tail[h] * S + k]);
+											const T1 value = static_cast<T1>(src[tail[h] * S + k]);
+											accumulator    = (accumulator < value) ? value : accumulator;
 										}
 								}
 							else if constexpr(Kp == Op::VAR || Kp == Op::STD)

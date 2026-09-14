@@ -3,9 +3,9 @@
 
 #include <iostream>
 
-#include <cuda/std/algorithm>
 #include <cuda/std/cmath>
 #include <cuda/std/tuple>
+#include <cuda/std/type_traits>
 #include <cuda_runtime.h>
 
 #include <vext/core/cuda/noise.cuh>
@@ -291,6 +291,7 @@ unary(
 			else if constexpr(Kp == Op::LEAKY_RELU)
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
+
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
 							const auto value = out[i] + noise(maybe_descriptor, i);
@@ -304,6 +305,7 @@ unary(
 			else if constexpr(Kp == Op::ELU)
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
+
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
 							const auto value = out[i] + noise(maybe_descriptor, i);
@@ -317,6 +319,7 @@ unary(
 			else if constexpr(Kp == Op::SWISH)
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
+
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
 							const auto value = out[i] + noise(maybe_descriptor, i);
@@ -331,6 +334,7 @@ unary(
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
 					const float b = static_cast<float>(::cuda::std::get<1>(::cuda::std::tuple{ param... }));
+
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
 							out[i] = a * (out[i] + noise(maybe_descriptor, i)) + b;
@@ -344,19 +348,24 @@ unary(
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
 					const float b = static_cast<float>(::cuda::std::get<1>(::cuda::std::tuple{ param... }));
+
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::max(a, ::cuda::std::min(b, out[i] + noise(maybe_descriptor, i)));
+							const ::cuda::std::common_type_t<T1, float> value         = out[i] + noise(maybe_descriptor, i);
+							const ::cuda::std::common_type_t<T1, float> upper_clamped = (b < value) ? b : value;
+							out[i]                                                    = (upper_clamped < a) ? a : upper_clamped;
 						}
 					else
 						{
-							out[i] = ::cuda::std::max(a, ::cuda::std::min(b, out[i]));
+							const ::cuda::std::common_type_t<T1, float> upper_clamped = (b < out[i]) ? b : out[i];
+							out[i]                                                    = (upper_clamped < a) ? a : upper_clamped;
 						}
 				}
 			else if constexpr(Kp == Op::POW)
 				{
 					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
 					const float b = static_cast<float>(::cuda::std::get<1>(::cuda::std::tuple{ param... }));
+
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
 							out[i] = a * ::cuda::std::pow(out[i] + noise(maybe_descriptor, i), b);

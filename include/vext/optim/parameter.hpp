@@ -27,7 +27,9 @@ public:
 	template <std::integral... Is>
 	requires(std::same_as<Is, std::remove_cvref_t<Is>> && ...)
 	Parameter(Is... dims)
-		: __tensor(dims...){};
+		: __tensor(dims...)
+	{
+	}
 
 public:
 	operator Tensor<Tp, Bp>&() noexcept

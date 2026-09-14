@@ -34,11 +34,15 @@ class Tensor
 
 		initializer_dimension(
 			const Tp value)
-			: value(value) {};
+			: value(value)
+		{
+		}
 
 		initializer_dimension(
 			const std::initializer_list<initializer_dimension>& children)
-			: children(children) {};
+			: children(children)
+		{
+		}
 	};
 
 public:

@@ -3,7 +3,6 @@
 
 #include <iostream>
 
-#include <cuda/std/algorithm>
 #include <cuda/std/cmath>
 #include <cuda_runtime.h>
 
@@ -77,11 +76,11 @@ csr_spmv(
 						}
 					else if constexpr(Kp == Op::MIN)
 						{
-							accumulator = ::cuda::std::min<T1>(accumulator, prod);
+							accumulator = (prod < accumulator) ? prod : accumulator;
 						}
 					else if constexpr(Kp == Op::MAX)
 						{
-							accumulator = ::cuda::std::max<T1>(accumulator, prod);
+							accumulator = (accumulator < prod) ? prod : accumulator;
 						}
 					else if constexpr(Kp == Op::VAR || Kp == Op::STD)
 						{

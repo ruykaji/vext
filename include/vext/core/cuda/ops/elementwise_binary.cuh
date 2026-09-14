@@ -4,8 +4,8 @@
 #include <iostream>
 #include <vector>
 
-#include <cuda/std/algorithm>
 #include <cuda/std/cmath>
+#include <cuda/std/type_traits>
 #include <cuda_runtime.h>
 
 #include <vext/core/cuda/noise.cuh>
@@ -108,33 +108,41 @@ binary(
 				{
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::min(a[i], b[i] + noise(maybe_descriptor, i));
+							const ::cuda::std::common_type_t<T3, float> value = b[i] + noise(maybe_descriptor, i);
+							out[i]                                            = (value < a[i]) ? value : a[i];
 						}
 					else
 						{
-							out[i] = ::cuda::std::min(a[i], b[i]);
+							out[i] = (b[i] < a[i]) ? b[i] : a[i];
 						}
 				}
 			else if constexpr(Kp == Op::MAX)
 				{
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::max(a[i], b[i] + noise(maybe_descriptor, i));
+							const ::cuda::std::common_type_t<T3, float> value = b[i] + noise(maybe_descriptor, i);
+							out[i]                                            = (a[i] < value) ? value : a[i];
 						}
 					else
 						{
-							out[i] = ::cuda::std::max(a[i], b[i]);
+							out[i] = (a[i] < b[i]) ? b[i] : a[i];
 						}
 				}
 			else if constexpr(Kp == Op::PRELU)
 				{
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::max<T1>(0, a[i]) + (b[i] + noise(maybe_descriptor, i)) * ::cuda::std::min<T1>(0, a[i]);
+							const T1 value    = static_cast<T1>(a[i]);
+							const T1 positive = (T1{ 0 } < value) ? value : T1{ 0 };
+							const T1 negative = (value < T1{ 0 }) ? value : T1{ 0 };
+							out[i]            = positive + (b[i] + noise(maybe_descriptor, i)) * negative;
 						}
 					else
 						{
-							out[i] = ::cuda::std::max<T1>(0, a[i]) + b[i] * ::cuda::std::min<T1>(0, a[i]);
+							const T1 value    = static_cast<T1>(a[i]);
+							const T1 positive = (T1{ 0 } < value) ? value : T1{ 0 };
+							const T1 negative = (value < T1{ 0 }) ? value : T1{ 0 };
+							out[i]            = positive + b[i] * negative;
 						}
 				}
 		}
@@ -231,33 +239,41 @@ binary_with_broadcast(
 				{
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::min(a[i], b[b_offset] + noise(maybe_descriptor, b_offset));
+							const ::cuda::std::common_type_t<T3, float> value = b[b_offset] + noise(maybe_descriptor, b_offset);
+							out[i]                                            = (value < a[i]) ? value : a[i];
 						}
 					else
 						{
-							out[i] = ::cuda::std::min(a[i], b[b_offset]);
+							out[i] = (b[b_offset] < a[i]) ? b[b_offset] : a[i];
 						}
 				}
 			else if constexpr(Kp == Op::MAX)
 				{
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::max(a[i], b[b_offset] + noise(maybe_descriptor, b_offset));
+							const ::cuda::std::common_type_t<T3, float> value = b[b_offset] + noise(maybe_descriptor, b_offset);
+							out[i]                                            = (a[i] < value) ? value : a[i];
 						}
 					else
 						{
-							out[i] = ::cuda::std::max(a[i], b[b_offset]);
+							out[i] = (a[i] < b[b_offset]) ? b[b_offset] : a[i];
 						}
 				}
 			else if constexpr(Kp == Op::PRELU)
 				{
 					if constexpr(Mp == ParameterMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::max<T1>(0, a[i]) + (b[b_offset] + noise(maybe_descriptor, b_offset)) * ::cuda::std::min<T1>(0, a[i]);
+							const T1 value    = static_cast<T1>(a[i]);
+							const T1 positive = (T1{ 0 } < value) ? value : T1{ 0 };
+							const T1 negative = (value < T1{ 0 }) ? value : T1{ 0 };
+							out[i]            = positive + (b[b_offset] + noise(maybe_descriptor, b_offset)) * negative;
 						}
 					else
 						{
-							out[i] = ::cuda::std::max<T1>(0, a[i]) + b[b_offset] * ::cuda::std::min<T1>(0, a[i]);
+							const T1 value    = static_cast<T1>(a[i]);
+							const T1 positive = (T1{ 0 } < value) ? value : T1{ 0 };
+							const T1 negative = (value < T1{ 0 }) ? value : T1{ 0 };
+							out[i]            = positive + b[b_offset] * negative;
 						}
 				}
 		}

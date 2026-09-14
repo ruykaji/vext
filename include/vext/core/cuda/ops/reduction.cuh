@@ -4,7 +4,6 @@
 #include <iostream>
 #include <vector>
 
-#include <cuda/std/algorithm>
 #include <cuda/std/cmath>
 #include <cuda/std/limits>
 #include <cuda_runtime.h>
@@ -110,11 +109,13 @@ reduce(
 							if constexpr(Mp == ParameterMode::PERTURBED)
 								{
 									const std::uint32_t index = keep_offset + reduce_offset;
-									accumulator               = ::cuda::std::min(accumulator, static_cast<T1>(src[index] + noise(maybe_descriptor, index)));
+									const T1 value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
+									accumulator    = (value < accumulator) ? value : accumulator;
 								}
 							else
 								{
-									accumulator = ::cuda::std::min(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
+									const T1 value = static_cast<T1>(src[keep_offset + reduce_offset]);
+									accumulator    = (value < accumulator) ? value : accumulator;
 								}
 						}
 					else if constexpr(Kp == Op::MAX)
@@ -122,11 +123,13 @@ reduce(
 							if constexpr(Mp == ParameterMode::PERTURBED)
 								{
 									const std::uint32_t index = keep_offset + reduce_offset;
-									accumulator               = ::cuda::std::max(accumulator, static_cast<T1>(src[index] + noise(maybe_descriptor, index)));
+									const T1 value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
+									accumulator    = (accumulator < value) ? value : accumulator;
 								}
 							else
 								{
-									accumulator = ::cuda::std::max(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
+									const T1 value = static_cast<T1>(src[keep_offset + reduce_offset]);
+									accumulator    = (accumulator < value) ? value : accumulator;
 								}
 						}
 					else if constexpr(Kp == Op::L2_NORM)
