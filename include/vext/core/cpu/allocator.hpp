@@ -55,6 +55,33 @@ struct Pool
 	std::set<Block*, DereferenceCompareLess<Block>> free_blocks      = {};
 	std::unordered_map<const void*, Block*>         allocated_blocks = {};
 	std::vector<Block*>                             roots            = {};
+
+	~Pool()
+	{
+		release();
+	}
+
+	void
+	release()
+	{
+		for(Block* root : roots)
+			{
+				std::free(root->ptr);
+
+				Block* block = root;
+
+				while(block != nullptr)
+					{
+						Block* next = block->next;
+						delete block;
+						block = next;
+					}
+			}
+
+		free_blocks.clear();
+		allocated_blocks.clear();
+		roots.clear();
+	}
 };
 
 inline std::uint64_t
@@ -241,39 +268,8 @@ deallocate(
 inline void
 free()
 {
-	for(auto& block : kernel::small_pool.roots)
-		{
-			std::free(block->ptr);
-
-			while(block != nullptr)
-				{
-					kernel::Block* tmp = block;
-					block              = block->next;
-
-					delete tmp;
-				}
-		}
-
-	kernel::small_pool.free_blocks.clear();
-	kernel::small_pool.allocated_blocks.clear();
-	kernel::small_pool.roots.clear();
-
-	for(auto& block : kernel::large_pool.roots)
-		{
-			std::free(block->ptr);
-
-			while(block != nullptr)
-				{
-					kernel::Block* tmp = block;
-					block              = block->next;
-
-					delete tmp;
-				}
-		}
-
-	kernel::large_pool.free_blocks.clear();
-	kernel::large_pool.allocated_blocks.clear();
-	kernel::large_pool.roots.clear();
+	kernel::small_pool.release();
+	kernel::large_pool.release();
 }
 
 }
