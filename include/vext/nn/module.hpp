@@ -1,32 +1,34 @@
 #ifndef __VEXT_NN_MODULE_HPP__
 #define __VEXT_NN_MODULE_HPP__
 
-#include <random>
 #include <stack>
+#include <type_traits>
 
+#include <vext/optim/parameter.hpp>
 #include <vext/tensor.hpp>
 #include <vext/type.hpp>
 
 namespace vext::nn::module
 {
 
-template <typename Tp, Backend Bp>
-class ParameterIterator
+template <typename Tp, Backend Bp, ParameterMode Mp>
+class iterator
 {
-	using vector_iterator = std::conditional_t<std::is_const_v<Tp>, typename std::vector<Tensor<float, Bp>*>::const_iterator, typename std::vector<Tensor<float, Bp>*>::iterator>;
+	using param_type      = optim::Parameter<float, Bp, Mp>;
+	using vector_iterator = std::conditional_t<std::is_const_v<Tp>, typename std::vector<param_type*>::const_iterator, typename std::vector<param_type*>::iterator>;
 	using module_pointer  = std::conditional_t<std::is_const_v<Tp>, Tp const*, Tp*>;
 
 public:
 	using iterator_category = std::input_iterator_tag;
-	using value_type        = Tensor<float, Bp>;
+	using value_type        = param_type;
 	using difference_type   = std::ptrdiff_t;
-	using pointer           = std::conditional_t<std::is_const_v<Tp>, Tensor<float, Bp> const*, Tensor<float, Bp>*>;
-	using reference         = std::conditional_t<std::is_const_v<Tp>, Tensor<float, Bp> const&, Tensor<float, Bp>&>;
+	using pointer           = std::conditional_t<std::is_const_v<Tp>, param_type const*, param_type*>;
+	using reference         = std::conditional_t<std::is_const_v<Tp>, param_type const&, param_type&>;
 
 public:
-	ParameterIterator() = default;
+	iterator() = default;
 
-	ParameterIterator(
+	iterator(
 		module_pointer module)
 	{
 		if(module != nullptr)
@@ -37,7 +39,7 @@ public:
 	}
 
 public:
-	ParameterIterator&
+	iterator&
 	operator++()
 	{
 		if(__module == nullptr)
@@ -55,10 +57,10 @@ public:
 		return *this;
 	}
 
-	ParameterIterator
+	iterator
 	operator++(int)
 	{
-		ParameterIterator tmp = *this;
+		iterator tmp = *this;
 		++(*this);
 		return tmp;
 	}
@@ -77,8 +79,8 @@ public:
 
 	friend bool
 	operator==(
-		const ParameterIterator& lhs,
-		const ParameterIterator& rhs)
+		const iterator& lhs,
+		const iterator& rhs)
 	{
 		if(lhs.__module == nullptr && rhs.__module == nullptr)
 			{
@@ -90,8 +92,8 @@ public:
 
 	friend bool
 	operator!=(
-		const ParameterIterator& lhs,
-		const ParameterIterator& rhs)
+		const iterator& lhs,
+		const iterator& rhs)
 	{
 		return !(lhs == rhs);
 	}
@@ -137,17 +139,37 @@ private:
 namespace vext::nn
 {
 
-template <Backend Bp>
+template <Backend Bp, ParameterMode Mp = ParameterMode::PLAIN>
 class Module
 {
-	friend module::ParameterIterator<Module, Bp>;
-	friend module::ParameterIterator<const Module, Bp>;
+	friend module::iterator<Module, Bp, Mp>;
+	friend module::iterator<const Module, Bp, Mp>;
 
 public:
-	using iterator       = module::ParameterIterator<Module, Bp>;
-	using const_iterator = module::ParameterIterator<const Module, Bp>;
+	using iterator       = module::iterator<Module, Bp, Mp>;
+	using const_iterator = module::iterator<const Module, Bp, Mp>;
 
 public:
+	template <typename... Args>
+	Module(Args&... args)
+	{
+		// clang-format off
+		([&]
+        {
+            using Tp = std::remove_cvref_t<Args>;
+
+			if constexpr(std::derived_from<Tp, Module<Bp, Mp>>)
+				{
+					__modules.emplace_back(&args);
+				}
+			else if constexpr(std::is_same_v<Tp, optim::Parameter<float, Bp, Mp>>)
+				{
+					__parameters.emplace_back(&args);
+				}
+        }(), ...);
+		// clang-format on
+	}
+
 	virtual ~Module() = default;
 
 public:
@@ -175,29 +197,11 @@ public:
 		return {};
 	}
 
-protected:
-	void
-	assign_parameter(
-		Tensor<float, Bp>* tensor)
-	{
-		__parameters.emplace_back(tensor);
-	}
-
-	void
-	assign_module(
-		Module* module)
-	{
-		__modules.emplace_back(module);
-	}
-
 private:
-	std::vector<Tensor<float, Bp>*> __parameters;
-	std::vector<Module*>            __modules;
+	std::vector<optim::Parameter<float, Bp, Mp>*> __parameters;
+	std::vector<Module*>                          __modules;
 };
 
 }
 
-#define VEXT_MODULE(param)                          \
-	using vext::nn::Module<param>::assign_parameter; \
-	using vext::nn::Module<param>::assign_module
 #endif

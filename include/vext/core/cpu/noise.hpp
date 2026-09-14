@@ -1,11 +1,9 @@
-#ifndef __VEXT_CORE_CUDA_NOISE_CUH__
-#define __VEXT_CORE_CUDA_NOISE_CUH__
-
-#include <cuda_runtime.h>
+#ifndef __VEXT_CORE_CPU_NOISE_HPP__
+#define __VEXT_CORE_CPU_NOISE_HPP__
 
 #include <vext/type.hpp>
 
-namespace vext::core::cuda
+namespace vext::core::cpu
 {
 
 struct NoiseDescriptor
@@ -22,11 +20,12 @@ sequentional_noise_descriptor()
 	return instance;
 }
 
-__device__ __forceinline__ float
+inline float
 noise(
-	const NoiseDescriptor& descriptor,
-	const std::uint32_t    x)
+	const std::uint32_t x)
 {
+	const NoiseDescriptor& descriptor = sequentional_noise_descriptor();
+
 	std::uint32_t h = descriptor.seed ^ (descriptor.counter * 0x85ebca6bu) ^ (x * 0x9e3779b9u);
 	h ^= h >> 16;
 	h *= 0x7feb352du;

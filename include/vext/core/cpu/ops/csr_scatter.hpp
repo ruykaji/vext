@@ -5,13 +5,14 @@
 #include <cmath>
 #include <vector>
 
+#include <vext/core/cpu/noise.hpp>
 #include <vext/core/type.hpp>
 #include <vext/type.hpp>
 
 namespace vext::core::cpu::ops
 {
 
-template <Op Kp, typename T1, typename T2>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2>
 requires core::SparseReductionOperation<Kp>
 void
 csr_scatter(
@@ -53,6 +54,10 @@ csr_scatter(
 						{
 							out[i * S + k] = std::numeric_limits<T1>::lowest();
 						}
+					else
+						{
+							out[i * S + k] = 0;
+						}
 				}
 
 			for(std::uint32_t h = start; h < end; ++h)
@@ -63,19 +68,51 @@ csr_scatter(
 						{
 							if constexpr(Kp == Op::PROD)
 								{
-									out[i * S + k] *= src[t * S + k];
+									if constexpr(Mp == ParameterMode::PERTURBED)
+										{
+											const std::uint64_t index = t * S + k;
+											out[i * S + k] *= src[index] + noise(index);
+										}
+									else
+										{
+											out[i * S + k] *= src[t * S + k];
+										}
 								}
 							else if constexpr(Kp == Op::MIN)
 								{
-									out[i * S + k] = std::min<T1>(out[i * S + k], src[t * S + k]);
+									if constexpr(Mp == ParameterMode::PERTURBED)
+										{
+											const std::uint64_t index = t * S + k;
+											out[i * S + k]            = std::min<T1>(out[i * S + k], src[index] + noise(index));
+										}
+									else
+										{
+											out[i * S + k] = std::min<T1>(out[i * S + k], src[t * S + k]);
+										}
 								}
 							else if constexpr(Kp == Op::MAX)
 								{
-									out[i * S + k] = std::max<T1>(out[i * S + k], src[t * S + k]);
+									if constexpr(Mp == ParameterMode::PERTURBED)
+										{
+											const std::uint64_t index = t * S + k;
+											out[i * S + k]            = std::max<T1>(out[i * S + k], src[index] + noise(index));
+										}
+									else
+										{
+											out[i * S + k] = std::max<T1>(out[i * S + k], src[t * S + k]);
+										}
 								}
 							else
 								{
-									out[i * S + k] += src[t * S + k];
+									if constexpr(Mp == ParameterMode::PERTURBED)
+										{
+											const std::uint64_t index = t * S + k;
+											out[i * S + k] += src[index] + noise(index);
+										}
+									else
+										{
+											out[i * S + k] += src[t * S + k];
+										}
 								}
 						}
 				}
@@ -105,7 +142,18 @@ csr_scatter(
 
 							for(std::uint32_t k = 0; k < S; ++k)
 								{
-									const float diff = static_cast<float>(src[t * S + k]) - mean_buffer[k];
+									float diff = 0.0f;
+
+									if constexpr(Mp == ParameterMode::PERTURBED)
+										{
+											const std::uint64_t index = t * S + k;
+											diff                      = (static_cast<float>(src[t * S + k]) + noise(index)) - mean_buffer[k];
+										}
+									else
+										{
+											diff = static_cast<float>(src[t * S + k]) - mean_buffer[k];
+										}
+
 									out[i * S + k] += diff * diff;
 								}
 						}
@@ -124,7 +172,6 @@ csr_scatter(
 				}
 		}
 }
-
 }
 
 #endif

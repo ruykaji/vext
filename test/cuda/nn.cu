@@ -11,12 +11,27 @@
 #include <vext/nn/activation/relu.hpp>
 #include <vext/nn/activation/sigmoid.hpp>
 #include <vext/nn/activation/softmax.hpp>
-#include <vext/nn/init.hpp>
 #include <vext/nn/layer/linear.hpp>
 #include <vext/nn/module.hpp>
 
 namespace
 {
+
+float
+noise_value(
+	const std::uint32_t seed,
+	const std::uint32_t counter,
+	const std::uint32_t index)
+{
+	std::uint32_t hash = seed ^ (counter * 0x85ebca6bu) ^ (index * 0x9e3779b9u);
+	hash ^= hash >> 16;
+	hash *= 0x7feb352du;
+	hash ^= hash >> 15;
+	hash *= 0x846ca68bu;
+	hash ^= hash >> 16;
+
+	return static_cast<float>(hash >> 8) * (1.0f / 16777216.0f);
+}
 
 bool
 has_cuda_device()
@@ -33,21 +48,21 @@ has_cuda_device()
 	return err == cudaSuccess;
 }
 
-class ParameterModule : public vext::nn::Module<vext::Backend::CUDA>
+template <vext::ParameterMode Mp = vext::ParameterMode::PLAIN>
+class ParameterModule : public vext::nn::Module<vext::Backend::CUDA, Mp>
 {
-	VEXT_MODULE(vext::Backend::CUDA);
-
 public:
 	ParameterModule()
-		: first({ 1.0f, 2.0f }),
-		  second({ { 3.0f, 4.0f }, { 5.0f, 6.0f } })
+		: vext::nn::Module<vext::Backend::CUDA, Mp>(first, second),
+		  first(2),
+		  second(2, 2)
 	{
-		assign_parameter(&first);
-		assign_parameter(&second);
+		static_cast<vext::Tensor<float, vext::Backend::CUDA>&>(first).set_from({ 1.0f, 2.0f });
+		static_cast<vext::Tensor<float, vext::Backend::CUDA>&>(second).set_from({ 3.0f, 4.0f, 5.0f, 6.0f });
 	}
 
-	vext::Tensor<float, vext::Backend::CUDA> first;
-	vext::Tensor<float, vext::Backend::CUDA> second;
+	vext::optim::Parameter<float, vext::Backend::CUDA, Mp> first;
+	vext::optim::Parameter<float, vext::Backend::CUDA, Mp> second;
 };
 
 void
@@ -104,16 +119,16 @@ TEST(NnCuda, ModuleIteratesRegisteredParameters)
 			GTEST_SKIP() << "No CUDA-capable device is available";
 		}
 
-	ParameterModule                                 module;
+	ParameterModule<>                               module;
 	vext::nn::Module<vext::Backend::CUDA>::iterator it = module.begin();
 
 	ASSERT_NE(it, module.end());
-	EXPECT_EQ(it->dims(), (std::vector<std::uint32_t>{ 2 }));
+	EXPECT_EQ((static_cast<const vext::Tensor<float, vext::Backend::CUDA>&>(*it).dims()), (std::vector<std::uint32_t>{ 2 }));
 
 	++it;
 
 	ASSERT_NE(it, module.end());
-	EXPECT_EQ(it->dims(), (std::vector<std::uint32_t>{ 2, 2 }));
+	EXPECT_EQ((static_cast<const vext::Tensor<float, vext::Backend::CUDA>&>(*it).dims()), (std::vector<std::uint32_t>{ 2, 2 }));
 
 	++it;
 	EXPECT_EQ(it, module.end());
@@ -157,11 +172,13 @@ TEST(NnCuda, InitializersWriteFiniteCudaTensorValues)
 			GTEST_SKIP() << "No CUDA-capable device is available";
 		}
 
-	vext::Tensor<float, vext::Backend::CUDA> uniform_weight(4, 8);
-	vext::Tensor<float, vext::Backend::CUDA> normal_weight(4, 8);
+	vext::optim::Parameter<float, vext::Backend::CUDA> uniform_parameter(4, 8);
+	vext::optim::Parameter<float, vext::Backend::CUDA> normal_parameter(4, 8);
 
-	vext::nn::xavier_uniform(uniform_weight);
-	vext::nn::kaiming_normal(normal_weight, 0.25f);
+	uniform_parameter.xavier_uniform();
+	normal_parameter.kaiming_normal(0.25f);
+	const vext::Tensor<float, vext::Backend::CUDA>& uniform_weight = uniform_parameter;
+	const vext::Tensor<float, vext::Backend::CUDA>& normal_weight  = normal_parameter;
 
 	const float sigma = 2.0f / (8.0f + 4.0f);
 	const float bound = std::sqrt(3.0f * sigma);
@@ -183,13 +200,13 @@ TEST(NnCuda, LinearRegistersParametersAndRunsForward)
 	vext::nn::Module<vext::Backend::CUDA>::iterator it = layer.begin();
 
 	ASSERT_NE(it, layer.end());
-	EXPECT_EQ(it->dims(), (std::vector<std::uint32_t>{ 3, 4 }));
+	EXPECT_EQ((static_cast<const vext::Tensor<float, vext::Backend::CUDA>&>(*it).dims()), (std::vector<std::uint32_t>{ 3, 4 }));
 	expect_cuda_tensor_finite(*it);
 
 	++it;
 
 	ASSERT_NE(it, layer.end());
-	EXPECT_EQ(it->dims(), (std::vector<std::uint32_t>{ 4 }));
+	EXPECT_EQ((static_cast<const vext::Tensor<float, vext::Backend::CUDA>&>(*it).dims()), (std::vector<std::uint32_t>{ 4 }));
 	expect_cuda_tensor_finite(*it);
 
 	const vext::Tensor<float, vext::Backend::CUDA> input({ { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } });
@@ -197,4 +214,32 @@ TEST(NnCuda, LinearRegistersParametersAndRunsForward)
 
 	EXPECT_EQ(output.dims(), (std::vector<std::uint32_t>{ 2, 4 }));
 	expect_cuda_tensor_finite(output);
+}
+
+TEST(NnCudaNoise, PerturbedLinearUsesEachParametersConfiguredSeed)
+{
+	if(!has_cuda_device())
+		{
+			GTEST_SKIP() << "No CUDA-capable device is available";
+		}
+
+	constexpr std::uint32_t weight_seed = 101;
+	constexpr std::uint32_t bias_seed   = 202;
+
+	vext::nn::layer::Linear<vext::Backend::CUDA, vext::ParameterMode::PERTURBED> layer(2, 2);
+	auto                                                                         parameter = layer.begin();
+	static_cast<vext::Tensor<float, vext::Backend::CUDA>&>(*parameter).set_from({ 1.0f, 1.0f, 1.0f, 1.0f });
+	parameter->set_seed({ weight_seed });
+	++parameter;
+	static_cast<vext::Tensor<float, vext::Backend::CUDA>&>(*parameter).set_from({ 0.0f, 0.0f });
+	parameter->set_seed({ bias_seed });
+
+	vext::core::cuda::NoiseDescriptor& descriptor = vext::core::cuda::sequentional_noise_descriptor();
+	descriptor.seed                               = 0;
+	descriptor.counter                            = 0;
+	descriptor.direction                          = 1;
+
+	const vext::Tensor<float, vext::Backend::CUDA> input({ { 1.0f, 2.0f } });
+	const vext::Tensor<float, vext::Backend::CUDA> output = layer(input);
+	expect_cuda_tensor_near(output, { 1.0f * (1.0f + noise_value(weight_seed, 1, 0)) + 2.0f * (1.0f + noise_value(weight_seed, 1, 2)) + noise_value(bias_seed, 2, 0), 1.0f * (1.0f + noise_value(weight_seed, 1, 1)) + 2.0f * (1.0f + noise_value(weight_seed, 1, 3)) + noise_value(bias_seed, 2, 1) });
 }

@@ -3,8 +3,10 @@
 
 #include <iostream>
 
+#include <cuda/std/type_traits>
 #include <cuda_runtime.h>
 
+#include <vext/core/cuda/noise.cuh>
 #include <vext/core/type.hpp>
 #include <vext/type.hpp>
 
@@ -23,7 +25,7 @@
 namespace vext::core::cuda::ops::kernel
 {
 
-template <typename T1, typename T2, typename T3>
+template <ParameterMode Mp, typename Dp = core::no_value_t, typename T1, typename T2, typename T3>
 __global__ void
 matmul(
 	T1* __restrict__ out,
@@ -31,16 +33,17 @@ matmul(
 	const T3* __restrict__ b,
 	const std::uint32_t M,
 	const std::uint32_t P,
-	const std::uint32_t N)
+	const std::uint32_t N,
+	const Dp            maybe_descriptor)
 {
-	__shared__ T1 a_tile[16][16];
-	__shared__ T2 b_tile[16][16];
+	__shared__ T2                                    a_tile[16][16];
+	__shared__ ::cuda::std::common_type_t<T3, float> b_tile[16][16];
 
 	const std::uint32_t row        = blockIdx.y * 16 + threadIdx.y;
 	const std::uint32_t col        = blockIdx.x * 16 + threadIdx.x;
 	const std::uint32_t tile_count = (P + 16 - 1) / 16;
 
-	std::common_type_t<T1, T2> sum = 0;
+	::cuda::std::common_type_t<T2, T3, float> sum = 0;
 
 	for(std::uint32_t tile = 0; tile < tile_count; ++tile)
 		{
@@ -48,11 +51,27 @@ matmul(
 			const std::uint32_t b_row = tile * 16 + threadIdx.y;
 
 			a_tile[threadIdx.y][threadIdx.x] = (row < M && a_col < P) ? a[row * P + a_col] : 0;
-			b_tile[threadIdx.y][threadIdx.x] = (b_row < P && col < N) ? b[b_row * N + col] : 0;
+
+			if(b_row < P && col < N)
+				{
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							const std::uint32_t index        = b_row * N + col;
+							b_tile[threadIdx.y][threadIdx.x] = b[index] + noise(maybe_descriptor, index);
+						}
+					else
+						{
+							b_tile[threadIdx.y][threadIdx.x] = b[b_row * N + col];
+						}
+				}
+			else
+				{
+					b_tile[threadIdx.y][threadIdx.x] = 0;
+				}
 
 			__syncthreads();
 
-#pragma unroll
+			#pragma unroll
 			for(std::int32_t k = 0; k < 16; ++k)
 				{
 					sum += a_tile[threadIdx.y][k] * b_tile[k][threadIdx.x];
@@ -63,7 +82,8 @@ matmul(
 
 	if(row < M && col < N)
 		{
-			out[static_cast<std::size_t>(row) * N + col] = sum;
+			const std::size_t index = static_cast<std::size_t>(row) * N + col;
+			out[index]              = sum;
 		}
 }
 
@@ -72,7 +92,7 @@ matmul(
 namespace vext::core::cuda::ops
 {
 
-template <typename T1, typename T2, typename T3>
+template <ParameterMode Mp = ParameterMode::PLAIN, typename T1, typename T2, typename T3>
 void
 matmul(
 	T1*                 out,
@@ -85,7 +105,15 @@ matmul(
 	const dim3 block(16, 16);
 	const dim3 grid((N + 16 - 1) / 16, (M + 16 - 1) / 16);
 
-	kernel::matmul<<<grid, block>>>(out, a, b, M, P, N);
+	if constexpr(Mp == ParameterMode::PERTURBED)
+		{
+			kernel::matmul<Mp><<<grid, block>>>(out, a, b, M, P, N, sequentional_noise_descriptor());
+		}
+	else
+		{
+			kernel::matmul<Mp><<<grid, block>>>(out, a, b, M, P, N, core::no_value);
+		}
+
 	CUDA_CHECK(cudaGetLastError());
 }
 

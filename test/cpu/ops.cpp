@@ -12,6 +12,35 @@
 namespace
 {
 
+float
+noise_value(
+	const std::uint32_t seed,
+	const std::uint32_t counter,
+	const std::uint32_t index,
+	const std::int8_t   direction = 1)
+{
+	std::uint32_t hash = seed ^ (counter * 0x85ebca6bu) ^ (index * 0x9e3779b9u);
+	hash ^= hash >> 16;
+	hash *= 0x7feb352du;
+	hash ^= hash >> 15;
+	hash *= 0x846ca68bu;
+	hash ^= hash >> 16;
+
+	return static_cast<float>(hash >> 8) * (1.0f / 16777216.0f) * direction;
+}
+
+void
+set_noise_descriptor(
+	const std::uint32_t seed,
+	const std::uint32_t counter,
+	const std::int8_t   direction = 1)
+{
+	vext::core::cpu::NoiseDescriptor& descriptor = vext::core::cpu::sequentional_noise_descriptor();
+	descriptor.seed                              = seed;
+	descriptor.counter                           = counter;
+	descriptor.direction                         = direction;
+}
+
 template <vext::Op Kp>
 concept UnaryCallable = requires(vext::Tensor<float>& tensor) {
 	vext::unary<Kp>(tensor);
@@ -127,6 +156,39 @@ TEST(TensorCpu, LogicalComparisonsRejectIncompatibleShapes)
 	const vext::Tensor<float> rhs({ 1.0f, 2.0f });
 
 	EXPECT_THROW((void)(vext::logical<vext::Op::EQUAL>(lhs, rhs)), std::runtime_error);
+}
+
+TEST(TensorCpu, OperationsRejectEmptyInputTensors)
+{
+	vext::Tensor<float>         empty;
+	vext::Tensor<std::uint32_t> empty_indices;
+
+	const vext::Tensor<float>         values({ 1.0f, 2.0f });
+	const vext::Tensor<float>         matrix({ { 1.0f, 2.0f }, { 3.0f, 4.0f } });
+	const vext::Tensor<std::uint32_t> head({ 0U, 1U, 2U });
+	const vext::Tensor<std::uint32_t> tail({ 0U, 1U });
+
+	EXPECT_THROW(vext::unary<vext::Op::RELU>(empty), std::runtime_error);
+
+	EXPECT_THROW((void)vext::binary<vext::Op::ADD>(empty, values), std::runtime_error);
+	EXPECT_THROW((void)vext::binary<vext::Op::ADD>(values, empty), std::runtime_error);
+
+	EXPECT_THROW((void)vext::logical<vext::Op::EQUAL>(empty, values), std::runtime_error);
+	EXPECT_THROW((void)vext::logical<vext::Op::EQUAL>(values, empty), std::runtime_error);
+
+	EXPECT_THROW((void)vext::reduction<vext::Op::SUM>(empty), std::runtime_error);
+
+	EXPECT_THROW((void)vext::csr_scatter<vext::Op::SUM>(empty, head, tail), std::runtime_error);
+	EXPECT_THROW((void)vext::csr_scatter<vext::Op::SUM>(matrix, empty_indices, tail), std::runtime_error);
+	EXPECT_THROW((void)vext::csr_scatter<vext::Op::SUM>(matrix, head, empty_indices), std::runtime_error);
+
+	EXPECT_THROW((void)vext::csr_spmv<vext::Op::SUM>(empty, head, tail, values), std::runtime_error);
+	EXPECT_THROW((void)vext::csr_spmv<vext::Op::SUM>(values, empty_indices, tail, values), std::runtime_error);
+	EXPECT_THROW((void)vext::csr_spmv<vext::Op::SUM>(values, head, empty_indices, values), std::runtime_error);
+	EXPECT_THROW((void)vext::csr_spmv<vext::Op::SUM>(values, head, tail, empty), std::runtime_error);
+
+	EXPECT_THROW((void)vext::matmul(empty, matrix), std::runtime_error);
+	EXPECT_THROW((void)vext::matmul(matrix, empty), std::runtime_error);
 }
 
 TEST(TensorCpu, ElementwiseArithmeticSupportsSameShape)
@@ -478,4 +540,80 @@ TEST(TensorCpu, MatmulRejectsIncompatibleShapes)
 	const vext::Tensor<float> rhs({ { 1.0f, 2.0f }, { 3.0f, 4.0f }, { 5.0f, 6.0f }, { 7.0f, 8.0f } });
 
 	EXPECT_THROW((void)vext::matmul(lhs, rhs), std::runtime_error);
+}
+
+TEST(TensorCpuNoise, UnaryAndBinaryPerturbTheParameterizedOperand)
+{
+	constexpr std::uint32_t seed    = 17;
+	constexpr std::uint32_t counter = 9;
+	set_noise_descriptor(seed, counter);
+
+	vext::Tensor<float> unary_values({ 1.0f, 2.0f });
+	vext::unary<vext::Op::LINEAR, vext::ParameterMode::PERTURBED>(unary_values, 2.0f, 1.0f);
+
+	expect_tensor_near(unary_values, { 2.0f * (1.0f + noise_value(seed, counter, 0)) + 1.0f, 2.0f * (2.0f + noise_value(seed, counter, 1)) + 1.0f });
+
+	const vext::Tensor<float> lhs({ { 10.0f, 20.0f, 30.0f }, { 40.0f, 50.0f, 60.0f } });
+	const vext::Tensor<float> rhs({ 1.0f, 2.0f, 3.0f });
+	const vext::Tensor<float> result = vext::binary<vext::Op::ADD, vext::ParameterMode::PERTURBED>(lhs, rhs);
+
+	expect_tensor_near(result, { 11.0f + noise_value(seed, counter, 0), 22.0f + noise_value(seed, counter, 1), 33.0f + noise_value(seed, counter, 2), 41.0f + noise_value(seed, counter, 0), 52.0f + noise_value(seed, counter, 1), 63.0f + noise_value(seed, counter, 2) });
+}
+
+TEST(TensorCpuNoise, ReductionPerturbsValuesBeforeAggregation)
+{
+	constexpr std::uint32_t seed    = 23;
+	constexpr std::uint32_t counter = 4;
+
+	set_noise_descriptor(seed, counter);
+
+	const vext::Tensor<float> values({ 1.0f, 2.0f, 4.0f });
+	const vext::Tensor<float> sum          = vext::reduction<vext::Op::SUM, vext::ParameterMode::PERTURBED>(values);
+	const float               expected_sum = 7.0f + noise_value(seed, counter, 0) + noise_value(seed, counter, 1) + noise_value(seed, counter, 2);
+
+	expect_scalar_near(sum, expected_sum);
+
+	const vext::Tensor<float> variance          = vext::reduction<vext::Op::VAR, vext::ParameterMode::PERTURBED>(values);
+	const float               v0                = 1.0f + noise_value(seed, counter, 0);
+	const float               v1                = 2.0f + noise_value(seed, counter, 1);
+	const float               v2                = 4.0f + noise_value(seed, counter, 2);
+	const float               mean              = (v0 + v1 + v2) / 3.0f;
+	const float               expected_variance = ((v0 - mean) * (v0 - mean) + (v1 - mean) * (v1 - mean) + (v2 - mean) * (v2 - mean)) / 3.0f;
+
+	expect_scalar_near(variance, expected_variance);
+}
+
+TEST(TensorCpuNoise, SparseOperationsPerturbSourceValuesBeforeAggregation)
+{
+	constexpr std::uint32_t seed    = 31;
+	constexpr std::uint32_t counter = 7;
+
+	set_noise_descriptor(seed, counter);
+
+	const vext::Tensor<std::uint32_t> head({ 0U, 2U, 3U });
+	const vext::Tensor<std::uint32_t> tail({ 0U, 1U, 1U });
+	const vext::Tensor<float>         src({ { 1.0f, 2.0f }, { 3.0f, 4.0f } });
+	const vext::Tensor<float>         scatter = vext::csr_scatter<vext::Op::SUM, vext::ParameterMode::PERTURBED>(src, head, tail);
+
+	expect_tensor_near(scatter, { 4.0f + noise_value(seed, counter, 0) + noise_value(seed, counter, 2), 6.0f + noise_value(seed, counter, 1) + noise_value(seed, counter, 3), 3.0f + noise_value(seed, counter, 2), 4.0f + noise_value(seed, counter, 3) });
+
+	const vext::Tensor<float> weights({ 1.0f, 2.0f, 3.0f });
+	const vext::Tensor<float> x({ 2.0f, 5.0f });
+	const vext::Tensor<float> spmv = vext::csr_spmv<vext::Op::SUM, vext::ParameterMode::PERTURBED>(weights, head, tail, x);
+
+	expect_tensor_near(spmv, { (1.0f + noise_value(seed, counter, 0)) * 2.0f + (2.0f + noise_value(seed, counter, 1)) * 5.0f, (3.0f + noise_value(seed, counter, 2)) * 5.0f });
+}
+
+TEST(TensorCpuNoise, MatmulPerturbsRightHandMatrixElements)
+{
+	constexpr std::uint32_t seed    = 43;
+	constexpr std::uint32_t counter = 2;
+
+	set_noise_descriptor(seed, counter);
+
+	const vext::Tensor<float> lhs({ { 2.0f, 3.0f } });
+	const vext::Tensor<float> rhs({ { 1.0f, 4.0f }, { 5.0f, 7.0f } });
+	const vext::Tensor<float> result = vext::matmul<vext::ParameterMode::PERTURBED>(lhs, rhs);
+
+	expect_tensor_near(result, { 2.0f * (1.0f + noise_value(seed, counter, 0)) + 3.0f * (5.0f + noise_value(seed, counter, 2)), 2.0f * (4.0f + noise_value(seed, counter, 1)) + 3.0f * (7.0f + noise_value(seed, counter, 3)) });
 }

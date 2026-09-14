@@ -1,16 +1,14 @@
 #ifndef __VEXT_CORE_CPU_OPS_LINEAR_ALGEBRA_HPP__
 #define __VEXT_CORE_CPU_OPS_LINEAR_ALGEBRA_HPP__
 
-#include <cmath>
-#include <vector>
-
+#include <vext/core/cpu/noise.hpp>
 #include <vext/core/type.hpp>
 #include <vext/type.hpp>
 
 namespace vext::core::cpu::ops
 {
 
-template <typename T1, typename T2, typename T3>
+template <ParameterMode Mp, typename T1, typename T2, typename T3>
 void
 matmul(
 	T1* __restrict__ out,
@@ -28,7 +26,14 @@ matmul(
 
 					for(std::uint32_t n = 0; n < N; ++n)
 						{
-							out[m * N + n] += a_value * b[p * N + n];
+							if constexpr(Mp == ParameterMode::PERTURBED)
+								{
+									out[m * N + n] += a_value * (b[p * N + n] + noise(p * N + n));
+								}
+							else
+								{
+									out[m * N + n] += a_value * b[p * N + n];
+								}
 						}
 				}
 		}

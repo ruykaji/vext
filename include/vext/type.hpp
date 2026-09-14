@@ -58,18 +58,17 @@ enum class Op : std::uint8_t
 	L2_NORM
 };
 
-using Axes = std::vector<std::int32_t>;
-
 enum class Mutation : std::uint8_t
 {
 	IN_PLACE = 0,
 	COPY
 };
 
-enum class Noise : std::uint8_t
+enum class ParameterMode : std::uint8_t
 {
-	NONE = 0,
-	SEED_HASH
+	PLAIN = 0,
+	PERTURBED,
+	DIFFERENTIABLE
 };
 
 }

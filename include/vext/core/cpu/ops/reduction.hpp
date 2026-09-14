@@ -5,13 +5,14 @@
 #include <limits>
 #include <vector>
 
+#include <vext/core/cpu/noise.hpp>
 #include <vext/core/type.hpp>
 #include <vext/type.hpp>
 
 namespace vext::core::cpu::ops
 {
 
-template <Op Kp, typename T1, typename T2>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2>
 requires core::ReductionOperation<Kp>
 void
 reduce(
@@ -60,23 +61,65 @@ reduce(
 				{
 					if constexpr(Kp == Op::PROD)
 						{
-							accumulator *= static_cast<T1>(src[keep_offset + reduce_offset]);
+							if constexpr(Mp == ParameterMode::PERTURBED)
+								{
+									const std::uint64_t index = keep_offset + reduce_offset;
+									accumulator *= static_cast<T1>(src[index] + noise(index));
+								}
+							else
+								{
+									accumulator *= static_cast<T1>(src[keep_offset + reduce_offset]);
+								}
 						}
 					else if constexpr(Kp == Op::MIN)
 						{
-							accumulator = std::min(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
+							if constexpr(Mp == ParameterMode::PERTURBED)
+								{
+									const std::uint64_t index = keep_offset + reduce_offset;
+									accumulator               = std::min(accumulator, static_cast<T1>(src[index] + noise(index)));
+								}
+							else
+								{
+									accumulator = std::min(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
+								}
 						}
 					else if constexpr(Kp == Op::MAX)
 						{
-							accumulator = std::max(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
+							if constexpr(Mp == ParameterMode::PERTURBED)
+								{
+									const std::uint64_t index = keep_offset + reduce_offset;
+									accumulator               = std::max(accumulator, static_cast<T1>(src[index] + noise(index)));
+								}
+							else
+								{
+									accumulator = std::max(accumulator, static_cast<T1>(src[keep_offset + reduce_offset]));
+								}
 						}
 					else if constexpr(Kp == Op::L2_NORM)
 						{
-							accumulator += src[keep_offset + reduce_offset] * src[keep_offset + reduce_offset];
+							if constexpr(Mp == ParameterMode::PERTURBED)
+								{
+									const std::uint64_t index = keep_offset + reduce_offset;
+									const T1            prod  = src[index] + noise(index);
+
+									accumulator += prod * prod;
+								}
+							else
+								{
+									accumulator += src[keep_offset + reduce_offset] * src[keep_offset + reduce_offset];
+								}
 						}
 					else
 						{
-							accumulator += static_cast<T1>(src[keep_offset + reduce_offset]);
+							if constexpr(Mp == ParameterMode::PERTURBED)
+								{
+									const std::uint64_t index = keep_offset + reduce_offset;
+									accumulator += static_cast<T1>(src[index] + noise(index));
+								}
+							else
+								{
+									accumulator += static_cast<T1>(src[keep_offset + reduce_offset]);
+								}
 						}
 
 					for(std::uint32_t k = reduce_size - 1;; --k)
@@ -113,7 +156,18 @@ reduce(
 
 					for(std::uint32_t j = 0; j < M; ++j)
 						{
-							const float diff = src[keep_offset + reduce_offset] - mean;
+							float diff = 0.0f;
+
+							if constexpr(Mp == ParameterMode::PERTURBED)
+								{
+									const std::uint64_t index = keep_offset + reduce_offset;
+									diff                      = (src[index] + noise(index)) - mean;
+								}
+							else
+								{
+									diff = src[keep_offset + reduce_offset] - mean;
+								}
+
 							dispersion += diff * diff;
 
 							for(std::uint32_t k = reduce_size - 1;; --k)

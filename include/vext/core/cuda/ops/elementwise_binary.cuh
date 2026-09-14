@@ -4,10 +4,11 @@
 #include <iostream>
 #include <vector>
 
-#include <cuda/std/algorithm>
 #include <cuda/std/cmath>
+#include <cuda/std/type_traits>
 #include <cuda_runtime.h>
 
+#include <vext/core/cuda/noise.cuh>
 #include <vext/core/type.hpp>
 #include <vext/type.hpp>
 
@@ -33,14 +34,15 @@ struct BinaryWithBroadcastMeta
 	std::uint32_t size = 0;
 };
 
-template <Op Kp, typename T1, typename T2, typename T3>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
 requires core::BinaryOperation<Kp>
 __global__ void
 binary(
 	T1*       out,
 	const T2* a,
 	const T3* __restrict__ b,
-	const std::uint32_t N)
+	const std::uint32_t N,
+	const Dp            maybe_descriptor)
 {
 	const std::uint32_t tid    = blockIdx.x * blockDim.x + threadIdx.x;
 	const std::uint32_t stride = blockDim.x * gridDim.x;
@@ -49,40 +51,104 @@ binary(
 		{
 			if constexpr(Kp == Op::ADD)
 				{
-					out[i] = a[i] + b[i];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] + (b[i] + noise(maybe_descriptor, i));
+						}
+					else
+						{
+							out[i] = a[i] + b[i];
+						}
 				}
 			else if constexpr(Kp == Op::SUB)
 				{
-					out[i] = a[i] - b[i];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] - (b[i] + noise(maybe_descriptor, i));
+						}
+					else
+						{
+							out[i] = a[i] - b[i];
+						}
 				}
 			else if constexpr(Kp == Op::MUL)
 				{
-					out[i] = a[i] * b[i];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] * (b[i] + noise(maybe_descriptor, i));
+						}
+					else
+						{
+							out[i] = a[i] * b[i];
+						}
 				}
 			else if constexpr(Kp == Op::DIV)
 				{
-					out[i] = a[i] / b[i];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] / (b[i] + noise(maybe_descriptor, i));
+						}
+					else
+						{
+							out[i] = a[i] / b[i];
+						}
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-					out[i] = ::cuda::std::pow(a[i], b[i]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = ::cuda::std::pow(a[i], b[i] + noise(maybe_descriptor, i));
+						}
+					else
+						{
+							out[i] = ::cuda::std::pow(a[i], b[i]);
+						}
 				}
 			else if constexpr(Kp == Op::MIN)
 				{
-					out[i] = ::cuda::std::min(a[i], b[i]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							const ::cuda::std::common_type_t<T3, float> value = b[i] + noise(maybe_descriptor, i);
+							out[i]                                            = (value < a[i]) ? value : a[i];
+						}
+					else
+						{
+							out[i] = (b[i] < a[i]) ? b[i] : a[i];
+						}
 				}
 			else if constexpr(Kp == Op::MAX)
 				{
-					out[i] = ::cuda::std::max(a[i], b[i]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							const ::cuda::std::common_type_t<T3, float> value = b[i] + noise(maybe_descriptor, i);
+							out[i]                                            = (a[i] < value) ? value : a[i];
+						}
+					else
+						{
+							out[i] = (a[i] < b[i]) ? b[i] : a[i];
+						}
 				}
 			else if constexpr(Kp == Op::PRELU)
 				{
-					out[i] = ::cuda::std::max<T1>(0, a[i]) + b[i] * ::cuda::std::min<T1>(0, a[i]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							const T1 value    = static_cast<T1>(a[i]);
+							const T1 positive = (T1{ 0 } < value) ? value : T1{ 0 };
+							const T1 negative = (value < T1{ 0 }) ? value : T1{ 0 };
+							out[i]            = positive + (b[i] + noise(maybe_descriptor, i)) * negative;
+						}
+					else
+						{
+							const T1 value    = static_cast<T1>(a[i]);
+							const T1 positive = (T1{ 0 } < value) ? value : T1{ 0 };
+							const T1 negative = (value < T1{ 0 }) ? value : T1{ 0 };
+							out[i]            = positive + b[i] * negative;
+						}
 				}
 		}
 }
 
-template <Op Kp, typename T1, typename T2, typename T3>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
 requires core::BinaryOperation<Kp>
 __global__ void
 binary_with_broadcast(
@@ -90,7 +156,8 @@ binary_with_broadcast(
 	const T2* a,
 	const T3* __restrict__ b,
 	const std::uint32_t           N,
-	const BinaryWithBroadcastMeta meta)
+	const BinaryWithBroadcastMeta meta,
+	const Dp                      maybe_descriptor)
 {
 	const std::uint32_t tid    = blockIdx.x * blockDim.x + threadIdx.x;
 	const std::uint32_t stride = blockDim.x * gridDim.x;
@@ -115,42 +182,99 @@ binary_with_broadcast(
 
 			if constexpr(Kp == Op::ADD)
 				{
-
-					out[i] = a[i] + b[b_offset];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] + (b[b_offset] + noise(maybe_descriptor, b_offset));
+						}
+					else
+						{
+							out[i] = a[i] + b[b_offset];
+						}
 				}
 			else if constexpr(Kp == Op::SUB)
 				{
-
-					out[i] = a[i] - b[b_offset];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] - (b[b_offset] + noise(maybe_descriptor, b_offset));
+						}
+					else
+						{
+							out[i] = a[i] - b[b_offset];
+						}
 				}
 			else if constexpr(Kp == Op::MUL)
 				{
-
-					out[i] = a[i] * b[b_offset];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] * (b[b_offset] + noise(maybe_descriptor, b_offset));
+						}
+					else
+						{
+							out[i] = a[i] * b[b_offset];
+						}
 				}
 			else if constexpr(Kp == Op::DIV)
 				{
-
-					out[i] = a[i] / b[b_offset];
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = a[i] / (b[b_offset] + noise(maybe_descriptor, b_offset));
+						}
+					else
+						{
+							out[i] = a[i] / b[b_offset];
+						}
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-
-					out[i] = ::cuda::std::pow(a[i], b[b_offset]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							out[i] = ::cuda::std::pow(a[i], b[b_offset] + noise(maybe_descriptor, b_offset));
+						}
+					else
+						{
+							out[i] = ::cuda::std::pow(a[i], b[b_offset]);
+						}
 				}
 			else if constexpr(Kp == Op::MIN)
 				{
-
-					out[i] = ::cuda::std::min(a[i], b[b_offset]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							const ::cuda::std::common_type_t<T3, float> value = b[b_offset] + noise(maybe_descriptor, b_offset);
+							out[i]                                            = (value < a[i]) ? value : a[i];
+						}
+					else
+						{
+							out[i] = (b[b_offset] < a[i]) ? b[b_offset] : a[i];
+						}
 				}
 			else if constexpr(Kp == Op::MAX)
 				{
-
-					out[i] = ::cuda::std::max(a[i], b[b_offset]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							const ::cuda::std::common_type_t<T3, float> value = b[b_offset] + noise(maybe_descriptor, b_offset);
+							out[i]                                            = (a[i] < value) ? value : a[i];
+						}
+					else
+						{
+							out[i] = (a[i] < b[b_offset]) ? b[b_offset] : a[i];
+						}
 				}
 			else if constexpr(Kp == Op::PRELU)
 				{
-					out[i] = ::cuda::std::max<T1>(0, a[i]) + b[b_offset] * ::cuda::std::min<T1>(0, a[i]);
+					if constexpr(Mp == ParameterMode::PERTURBED)
+						{
+							const T1 value    = static_cast<T1>(a[i]);
+							const T1 positive = (T1{ 0 } < value) ? value : T1{ 0 };
+							const T1 negative = (value < T1{ 0 }) ? value : T1{ 0 };
+							out[i]            = positive + (b[b_offset] + noise(maybe_descriptor, b_offset)) * negative;
+						}
+					else
+						{
+							const T1 value    = static_cast<T1>(a[i]);
+							const T1 positive = (T1{ 0 } < value) ? value : T1{ 0 };
+							const T1 negative = (value < T1{ 0 }) ? value : T1{ 0 };
+							out[i]            = positive + b[b_offset] * negative;
+						}
 				}
 		}
 }
@@ -160,7 +284,7 @@ binary_with_broadcast(
 namespace vext::core::cuda::ops
 {
 
-template <Op Kp, typename T1, typename T2, typename T3>
+template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, typename T2, typename T3>
 requires core::BinaryOperation<Kp>
 void
 binary(
@@ -172,11 +296,19 @@ binary(
 	constexpr std::uint32_t block_size = 256;
 	const std::uint32_t     grid_size  = (N + block_size - 1) / block_size;
 
-	kernel::binary<Kp><<<grid_size, block_size>>>(out, a, b, N);
+	if constexpr(Mp == ParameterMode::PERTURBED)
+		{
+			kernel::binary<Kp, Mp><<<grid_size, block_size>>>(out, a, b, N, sequentional_noise_descriptor());
+		}
+	else
+		{
+			kernel::binary<Kp, Mp><<<grid_size, block_size>>>(out, a, b, N, core::no_value);
+		}
+
 	CUDA_CHECK(cudaGetLastError());
 }
 
-template <Op Kp, typename T1, typename T2, typename T3>
+template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, typename T2, typename T3>
 requires core::BinaryOperation<Kp>
 void
 binary_with_broadcast(
@@ -198,7 +330,16 @@ binary_with_broadcast(
 			meta.strides[i] = strides[i];
 		}
 
-	kernel::binary_with_broadcast<Kp><<<grid_size, block_size>>>(out, a, b, N, meta);
+	if constexpr(Mp == ParameterMode::PERTURBED)
+		{
+			const NoiseDescriptor& descriptor = sequentional_noise_descriptor();
+			kernel::binary_with_broadcast<Kp, Mp><<<grid_size, block_size>>>(out, a, b, N, meta, descriptor);
+		}
+	else
+		{
+			kernel::binary_with_broadcast<Kp, Mp><<<grid_size, block_size>>>(out, a, b, N, meta, core::no_value);
+		}
+
 	CUDA_CHECK(cudaGetLastError());
 }
 

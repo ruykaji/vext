@@ -24,6 +24,8 @@
 namespace vext
 {
 
+using Axes = std::vector<std::int32_t>;
+
 inline Axes
 axes(
 	std::initializer_list<std::int32_t> values)
@@ -31,21 +33,26 @@ axes(
 	return Axes(values);
 }
 
-template <Op Kp, typename T1, Backend B1, core::Arithmetic... Is>
+template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, core::Arithmetic... Is>
 requires core::UnaryOperation<Kp>
 void
 unary(
 	Tensor<T1, B1>& tensor,
 	Is... param)
 {
+	if(tensor.length() == 0)
+		{
+			throw std::runtime_error("Unary operation requires a non-empty input tensor.");
+		}
+
 	if constexpr(B1 == Backend::CPU)
 		{
-			core::cpu::ops::unary<Kp>(tensor.data(), tensor.length(), param...);
+			core::cpu::ops::unary<Kp, Mp>(tensor.data(), tensor.length(), param...);
 		}
 	#if VEXT_CUDA
 	else
 		{
-			core::cuda::ops::unary<Kp>(tensor.data(), tensor.length(), param...);
+			core::cuda::ops::unary<Kp, Mp>(tensor.data(), tensor.length(), param...);
 		}
 	#else
 	else
@@ -55,14 +62,24 @@ unary(
 	#endif
 }
 
-template <Op Kp, typename T1, Backend B1, typename T2, Backend B2, typename To = core::no_value_t>
+template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
 requires core::BinaryOperation<Kp>
 auto
 binary(
 	const Tensor<T1, B1>& lhs,
-	const Tensor<T2, B2>& rhs,
+	const Tensor<T2, B1>& rhs,
 	To&&                  maybe_out = {})
 {
+	if(lhs.length() == 0)
+		{
+			throw std::runtime_error("Binary operation requires a non-empty left-hand input tensor.");
+		}
+
+	if(rhs.length() == 0)
+		{
+			throw std::runtime_error("Binary operation requires a non-empty right-hand input tensor.");
+		}
+
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -77,8 +94,8 @@ binary(
 	using CommonType = std::common_type_t<T1, T2>;
 	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
 
-	constexpr bool IS_SAME_DEVICE = (B1 == B2 && B1 == (std::remove_reference_t<TensorOut>::backend_type));
-	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
+	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_BACKEND, "Binary operation output must use the same backend as its input tensors.");
 
 	const auto assign_out = [&]() -> TensorOut
 		{
@@ -98,12 +115,12 @@ binary(
 		{
 			if constexpr(B1 == Backend::CPU)
 				{
-					core::cpu::ops::binary<Kp>(out.data(), lhs.data(), rhs.data(), lhs.length());
+					core::cpu::ops::binary<Kp, Mp>(out.data(), lhs.data(), rhs.data(), lhs.length());
 				}
 			#if VEXT_CUDA
 			else
 				{
-					core::cuda::ops::binary<Kp>(out.data(), lhs.data(), rhs.data(), lhs.length());
+					core::cuda::ops::binary<Kp, Mp>(out.data(), lhs.data(), rhs.data(), lhs.length());
 				}
 			#else
 			else
@@ -171,12 +188,12 @@ binary(
 
 			if constexpr(B1 == Backend::CPU)
 				{
-					core::cpu::ops::binary_with_broadcast<Kp>(out.data(), lhs.data(), rhs.data(), lhs.length(), lhs.dims(), strides);
+					core::cpu::ops::binary_with_broadcast<Kp, Mp>(out.data(), lhs.data(), rhs.data(), lhs.length(), lhs.dims(), strides);
 				}
 			#if VEXT_CUDA
 			else
 				{
-					core::cuda::ops::binary_with_broadcast<Kp>(out.data(), lhs.data(), rhs.data(), lhs.length(), lhs.dims(), strides);
+					core::cuda::ops::binary_with_broadcast<Kp, Mp>(out.data(), lhs.data(), rhs.data(), lhs.length(), lhs.dims(), strides);
 				}
 			#else
 			else
@@ -196,14 +213,24 @@ binary(
 		}
 }
 
-template <Op Kp, typename T1, Backend B1, typename T2, Backend B2, typename To = core::no_value_t>
+template <Op Kp, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
 requires core::LogicalOperation<Kp>
 auto
 logical(
 	const Tensor<T1, B1>& lhs,
-	const Tensor<T2, B2>& rhs,
+	const Tensor<T2, B1>& rhs,
 	To&&                  maybe_out = {})
 {
+	if(lhs.length() == 0)
+		{
+			throw std::runtime_error("Logical operation requires a non-empty left-hand input tensor.");
+		}
+
+	if(rhs.length() == 0)
+		{
+			throw std::runtime_error("Logical operation requires a non-empty right-hand input tensor.");
+		}
+
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -218,8 +245,8 @@ logical(
 	using CommonType = std::uint8_t;
 	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
 
-	constexpr bool IS_SAME_DEVICE = (B1 == B2 && B1 == (std::remove_reference_t<TensorOut>::backend_type));
-	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
+	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_BACKEND, "Logical operation output must use the same backend as its input tensors.");
 
 	const auto assign_out = [&]() -> TensorOut
 		{
@@ -266,7 +293,7 @@ logical(
 		}
 }
 
-template <Op Kp, typename T1, Backend B1, typename Ta = core::no_value_t, typename To = core::no_value_t>
+template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename Ta = core::no_value_t, typename To = core::no_value_t>
 requires core::ReductionOperation<Kp>
 auto
 reduction(
@@ -274,6 +301,11 @@ reduction(
 	Ta&&                  axis      = {},
 	To&&                  maybe_out = {})
 {
+	if(src.length() == 0)
+		{
+			throw std::runtime_error("Reduction requires a non-empty input tensor.");
+		}
+
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -288,8 +320,8 @@ reduction(
 	using CommonType = core::ReductionOut<Kp, T1>;
 	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
 
-	constexpr bool IS_SAME_DEVICE = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
-	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
+	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_BACKEND, "Reduction output must use the same backend as its input tensor.");
 
 	constexpr bool IS_REDUCE_AXIS = !std::is_same_v<Ta, core::no_value_t>;
 
@@ -396,12 +428,12 @@ reduction(
 
 	if constexpr(B1 == Backend::CPU)
 		{
-			core::cpu::ops::reduce<Kp>(out.data(), src.data(), N, M, keep_dims, keep_strides, reduce_dims, reduce_strides);
+			core::cpu::ops::reduce<Kp, Mp>(out.data(), src.data(), N, M, keep_dims, keep_strides, reduce_dims, reduce_strides);
 		}
 	#if VEXT_CUDA
 	else
 		{
-			core::cuda::ops::reduce<Kp>(out.data(), src.data(), N, M, keep_dims, keep_strides, reduce_dims, reduce_strides);
+			core::cuda::ops::reduce<Kp, Mp>(out.data(), src.data(), N, M, keep_dims, keep_strides, reduce_dims, reduce_strides);
 		}
 	#else
 	else
@@ -420,15 +452,30 @@ reduction(
 		}
 }
 
-template <Op Kp, typename T1, Backend B1, Backend B2, Backend B3, typename To = core::no_value_t>
+template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename To = core::no_value_t>
 requires core::SparseReductionOperation<Kp>
 auto
 csr_scatter(
 	const Tensor<T1, B1>&            src,
-	const Tensor<std::uint32_t, B2>& head,
-	const Tensor<std::uint32_t, B3>& tail,
+	const Tensor<std::uint32_t, B1>& head,
+	const Tensor<std::uint32_t, B1>& tail,
 	To&&                             maybe_out = {})
 {
+	if(src.length() == 0)
+		{
+			throw std::runtime_error("CSR scatter requires a non-empty source tensor.");
+		}
+
+	if(head.length() == 0)
+		{
+			throw std::runtime_error("CSR scatter requires a non-empty head tensor.");
+		}
+
+	if(tail.length() == 0)
+		{
+			throw std::runtime_error("CSR scatter requires a non-empty tail tensor.");
+		}
+
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -443,8 +490,8 @@ csr_scatter(
 	using CommonType = core::CSRScatterOut<Kp, T1>;
 	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
 
-	constexpr bool IS_SAME_DEVICE = (B1 == B2 && B1 == B3 && B1 == (std::remove_reference_t<TensorOut>::backend_type));
-	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
+	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_BACKEND, "CSR scatter output must use the same backend as its input tensors.");
 
 	if(src.dims()[0] != (head.dims()[0] - 1))
 		{
@@ -467,12 +514,12 @@ csr_scatter(
 
 	if constexpr(B1 == Backend::CPU)
 		{
-			core::cpu::ops::csr_scatter<Kp>(out.data(), src.data(), head.data(), tail.data(), out.dims()[0], out.strides()[0]);
+			core::cpu::ops::csr_scatter<Kp, Mp>(out.data(), src.data(), head.data(), tail.data(), out.dims()[0], out.strides()[0]);
 		}
 	#if VEXT_CUDA
 	else
 		{
-			core::cuda::ops::csr_scatter<Kp>(out.data(), src.data(), head.data(), tail.data(), out.dims()[0], out.strides()[0]);
+			core::cuda::ops::csr_scatter<Kp, Mp>(out.data(), src.data(), head.data(), tail.data(), out.dims()[0], out.strides()[0]);
 		}
 	#else
 	else
@@ -491,16 +538,36 @@ csr_scatter(
 		}
 }
 
-template <Op Kp, typename T1, Backend B1, typename T2, Backend B2, Backend B3, Backend B4, typename To = core::no_value_t>
+template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
 requires core::SparseReductionOperation<Kp>
 auto
 csr_spmv(
 	const Tensor<T1, B1>&            A,
-	const Tensor<std::uint32_t, B2>& head,
-	const Tensor<std::uint32_t, B3>& tail,
-	const Tensor<T2, B4>&            x,
+	const Tensor<std::uint32_t, B1>& head,
+	const Tensor<std::uint32_t, B1>& tail,
+	const Tensor<T2, B1>&            x,
 	To&&                             maybe_out = {})
 {
+	if(A.length() == 0)
+		{
+			throw std::runtime_error("CSR SpMV requires a non-empty values tensor.");
+		}
+
+	if(head.length() == 0)
+		{
+			throw std::runtime_error("CSR SpMV requires a non-empty head tensor.");
+		}
+
+	if(tail.length() == 0)
+		{
+			throw std::runtime_error("CSR SpMV requires a non-empty tail tensor.");
+		}
+
+	if(x.length() == 0)
+		{
+			throw std::runtime_error("CSR SpMV requires a non-empty vector tensor.");
+		}
+
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -515,8 +582,8 @@ csr_spmv(
 	using CommonType = core::CSRSpMVOut<Kp, T1>;
 	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
 
-	constexpr bool IS_SAME_DEVICE = (B1 == B2 && B1 == B3 && B1 == B4 && B1 == (std::remove_reference_t<TensorOut>::backend_type));
-	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
+	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_BACKEND, "CSR SpMV output must use the same backend as its input tensors.");
 
 	const auto assign_out = [&]() -> TensorOut
 		{
@@ -534,12 +601,12 @@ csr_spmv(
 
 	if constexpr(B1 == Backend::CPU)
 		{
-			core::cpu::ops::csr_spmv<Kp>(out.data(), A.data(), head.data(), tail.data(), x.data(), out.length());
+			core::cpu::ops::csr_spmv<Kp, Mp>(out.data(), A.data(), head.data(), tail.data(), x.data(), out.length());
 		}
 	#if VEXT_CUDA
 	else
 		{
-			core::cuda::ops::csr_spmv<Kp>(out.data(), A.data(), head.data(), tail.data(), x.data(), out.length());
+			core::cuda::ops::csr_spmv<Kp, Mp>(out.data(), A.data(), head.data(), tail.data(), x.data(), out.length());
 		}
 	#else
 	else
@@ -558,13 +625,23 @@ csr_spmv(
 		}
 }
 
-template <typename T1, Backend B1, typename T2, Backend B2, typename To = core::no_value_t>
+template <ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
 auto
 matmul(
 	const Tensor<T1, B1>& lhs,
-	const Tensor<T2, B2>& rhs,
+	const Tensor<T2, B1>& rhs,
 	To&&                  maybe_out = {})
 {
+	if(lhs.length() == 0)
+		{
+			throw std::runtime_error("Matrix multiplication requires a non-empty left-hand input tensor.");
+		}
+
+	if(rhs.length() == 0)
+		{
+			throw std::runtime_error("Matrix multiplication requires a non-empty right-hand input tensor.");
+		}
+
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -579,8 +656,8 @@ matmul(
 	using CommonType = std::common_type_t<T1, T2>;
 	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
 
-	constexpr bool IS_SAME_DEVICE = (B1 == B2 && B1 == (std::remove_reference_t<TensorOut>::backend_type));
-	static_assert(IS_SAME_DEVICE, "Error: Binary ops cannot be performed on tensors with different Backends!");
+	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_BACKEND, "Matrix multiplication output must use the same backend as its input tensors.");
 
 	const std::uint32_t lhs_shared = lhs.dims().back();
 	const std::uint32_t rhs_shared = rhs.dims().front();
@@ -633,12 +710,12 @@ matmul(
 
 	if constexpr(B1 == Backend::CPU)
 		{
-			core::cpu::ops::matmul<T1, T2>(out.data(), lhs.data(), rhs.data(), lhs_combined, lhs_shared, rhs_combined);
+			core::cpu::ops::matmul<Mp>(out.data(), lhs.data(), rhs.data(), lhs_combined, lhs_shared, rhs_combined);
 		}
 	#if VEXT_CUDA
 	else
 		{
-			core::cuda::ops::matmul<T1, T2>(out.data(), lhs.data(), rhs.data(), lhs_combined, lhs_shared, rhs_combined);
+			core::cuda::ops::matmul<Mp>(out.data(), lhs.data(), rhs.data(), lhs_combined, lhs_shared, rhs_combined);
 		}
 	#else
 	else
