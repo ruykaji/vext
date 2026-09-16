@@ -410,6 +410,26 @@ TEST(TensorCuda, ReductionsSupportSingleAxis)
 	expect_tensor_near(row_max, { 3.0f, 6.0f });
 }
 
+TEST(TensorCuda, ReducingAllAxesReturnsOneElementTensor)
+{
+	if(!has_cuda_device())
+		{
+			GTEST_SKIP() << "No CUDA-capable device is available";
+		}
+
+	const vext::Tensor<float, vext::Backend::CUDA> vector({ 1.0f, 2.0f, 3.0f, 4.0f });
+	const vext::Tensor<float, vext::Backend::CUDA> matrix({ { 1.0f, 2.0f }, { 3.0f, 4.0f } });
+
+	vext::Tensor<float, vext::Backend::CUDA> vector_sum({ 1 });
+	vext::reduction<vext::Op::SUM>(vector, vext::axes({ 0 }), vector_sum);
+	const auto matrix_sum = vext::reduction<vext::Op::SUM>(matrix, vext::axes({ 0, 1 }));
+
+	expect_shape(vector_sum.dims(), { 1 });
+	expect_tensor_near(vector_sum, { 10.0f });
+	expect_shape(matrix_sum.dims(), { 1 });
+	expect_tensor_near(matrix_sum, { 10.0f });
+}
+
 TEST(TensorCuda, ReductionsSupportMultipleAxes)
 {
 	if(!has_cuda_device())

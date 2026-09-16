@@ -70,16 +70,6 @@ binary(
 	const Tensor<T2, B1>& rhs,
 	To&&                  maybe_out = {})
 {
-	if(lhs.length() == 0)
-		{
-			throw std::runtime_error("Binary operation requires a non-empty left-hand input tensor.");
-		}
-
-	if(rhs.length() == 0)
-		{
-			throw std::runtime_error("Binary operation requires a non-empty right-hand input tensor.");
-		}
-
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -96,6 +86,16 @@ binary(
 
 	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
 	static_assert(IS_SAME_BACKEND, "Binary operation output must use the same backend as its input tensors.");
+
+	if(lhs.length() == 0)
+		{
+			throw std::runtime_error("Binary operation requires a non-empty left-hand input tensor.");
+		}
+
+	if(rhs.length() == 0)
+		{
+			throw std::runtime_error("Binary operation requires a non-empty right-hand input tensor.");
+		}
 
 	const auto assign_out = [&]() -> TensorOut
 		{
@@ -173,17 +173,15 @@ binary(
 							throw std::runtime_error("Binary operation cannot broadcast the right-hand tensor shape to the left-hand tensor shape.");
 						}
 
-					strides = lhs.strides();
+			// Map source dimensions to right-hand storage strides. Dimensions
+			// outside the matching rhs shape are broadcast dimensions and must
+			// keep a zero stride; using lhs strides here walks past rhs.data().
+			strides.assign(source_size, 0);
 
-					for(std::uint64_t i = 0; i < offset_left; ++i)
-						{
-							strides[i] = 0;
-						}
-
-					for(std::uint64_t i = offset_left + target_size; i < source_size; ++i)
-						{
-							strides[i] = 0;
-						}
+			for(std::uint64_t i = 0; i < target_size; ++i)
+				{
+					strides[offset_left + i] = rhs.strides()[i];
+				}
 				}
 
 			if constexpr(B1 == Backend::CPU)
@@ -221,16 +219,6 @@ logical(
 	const Tensor<T2, B1>& rhs,
 	To&&                  maybe_out = {})
 {
-	if(lhs.length() == 0)
-		{
-			throw std::runtime_error("Logical operation requires a non-empty left-hand input tensor.");
-		}
-
-	if(rhs.length() == 0)
-		{
-			throw std::runtime_error("Logical operation requires a non-empty right-hand input tensor.");
-		}
-
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -247,6 +235,16 @@ logical(
 
 	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
 	static_assert(IS_SAME_BACKEND, "Logical operation output must use the same backend as its input tensors.");
+
+	if(lhs.length() == 0)
+		{
+			throw std::runtime_error("Logical operation requires a non-empty left-hand input tensor.");
+		}
+
+	if(rhs.length() == 0)
+		{
+			throw std::runtime_error("Logical operation requires a non-empty right-hand input tensor.");
+		}
 
 	const auto assign_out = [&]() -> TensorOut
 		{
@@ -301,11 +299,6 @@ reduction(
 	Ta&&                  axis      = {},
 	To&&                  maybe_out = {})
 {
-	if(src.length() == 0)
-		{
-			throw std::runtime_error("Reduction requires a non-empty input tensor.");
-		}
-
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -329,6 +322,11 @@ reduction(
 		{
 			constexpr bool IS_AXES = std::is_same_v<std::remove_cvref_t<Ta>, Axes>;
 			static_assert(IS_AXES, "Reduction axes must be provided as vext::Axes.");
+		}
+
+	if(src.length() == 0)
+		{
+			throw std::runtime_error("Reduction requires a non-empty input tensor.");
 		}
 
 	const std::uint32_t dims_count = src.dims().size();
@@ -412,6 +410,12 @@ reduction(
 			M              = src.length();
 		}
 
+	if(keep_dims.empty())
+		{
+			keep_dims.emplace_back(1);
+			keep_strides.emplace_back(0);
+		}
+
 	const auto assign_out = [&]() -> TensorOut
 		{
 			if constexpr(IS_OUT_DEFINED)
@@ -461,21 +465,6 @@ csr_scatter(
 	const Tensor<std::uint32_t, B1>& tail,
 	To&&                             maybe_out = {})
 {
-	if(src.length() == 0)
-		{
-			throw std::runtime_error("CSR scatter requires a non-empty source tensor.");
-		}
-
-	if(head.length() == 0)
-		{
-			throw std::runtime_error("CSR scatter requires a non-empty head tensor.");
-		}
-
-	if(tail.length() == 0)
-		{
-			throw std::runtime_error("CSR scatter requires a non-empty tail tensor.");
-		}
-
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -492,6 +481,21 @@ csr_scatter(
 
 	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
 	static_assert(IS_SAME_BACKEND, "CSR scatter output must use the same backend as its input tensors.");
+
+	if(src.length() == 0)
+		{
+			throw std::runtime_error("CSR scatter requires a non-empty source tensor.");
+		}
+
+	if(head.length() == 0)
+		{
+			throw std::runtime_error("CSR scatter requires a non-empty head tensor.");
+		}
+
+	if(tail.length() == 0)
+		{
+			throw std::runtime_error("CSR scatter requires a non-empty tail tensor.");
+		}
 
 	if(src.dims()[0] != (head.dims()[0] - 1))
 		{
@@ -548,6 +552,23 @@ csr_spmv(
 	const Tensor<T2, B1>&            x,
 	To&&                             maybe_out = {})
 {
+	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
+
+	if constexpr(IS_OUT_DEFINED)
+		{
+			constexpr bool IS_MUTABLE = !std::is_const_v<std::remove_reference_t<To>>;
+			static_assert(IS_MUTABLE, "");
+
+			constexpr bool IS_TENSOR_INSTANTIATION = core::is_tensor_instantiation<std::remove_cvref_t<To>, Tensor>::value;
+			static_assert(IS_TENSOR_INSTANTIATION, "");
+		}
+
+	using CommonType = core::CSRSpMVOut<Kp, T1>;
+	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
+
+	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_BACKEND, "CSR SpMV output must use the same backend as its input tensors.");
+
 	if(A.length() == 0)
 		{
 			throw std::runtime_error("CSR SpMV requires a non-empty values tensor.");
@@ -567,23 +588,6 @@ csr_spmv(
 		{
 			throw std::runtime_error("CSR SpMV requires a non-empty vector tensor.");
 		}
-
-	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
-
-	if constexpr(IS_OUT_DEFINED)
-		{
-			constexpr bool IS_MUTABLE = !std::is_const_v<std::remove_reference_t<To>>;
-			static_assert(IS_MUTABLE, "");
-
-			constexpr bool IS_TENSOR_INSTANTIATION = core::is_tensor_instantiation<std::remove_cvref_t<To>, Tensor>::value;
-			static_assert(IS_TENSOR_INSTANTIATION, "");
-		}
-
-	using CommonType = core::CSRSpMVOut<Kp, T1>;
-	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
-
-	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
-	static_assert(IS_SAME_BACKEND, "CSR SpMV output must use the same backend as its input tensors.");
 
 	const auto assign_out = [&]() -> TensorOut
 		{
@@ -632,16 +636,6 @@ matmul(
 	const Tensor<T2, B1>& rhs,
 	To&&                  maybe_out = {})
 {
-	if(lhs.length() == 0)
-		{
-			throw std::runtime_error("Matrix multiplication requires a non-empty left-hand input tensor.");
-		}
-
-	if(rhs.length() == 0)
-		{
-			throw std::runtime_error("Matrix multiplication requires a non-empty right-hand input tensor.");
-		}
-
 	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
 
 	if constexpr(IS_OUT_DEFINED)
@@ -658,6 +652,16 @@ matmul(
 
 	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
 	static_assert(IS_SAME_BACKEND, "Matrix multiplication output must use the same backend as its input tensors.");
+
+	if(lhs.length() == 0)
+		{
+			throw std::runtime_error("Matrix multiplication requires a non-empty left-hand input tensor.");
+		}
+
+	if(rhs.length() == 0)
+		{
+			throw std::runtime_error("Matrix multiplication requires a non-empty right-hand input tensor.");
+		}
 
 	const std::uint32_t lhs_shared = lhs.dims().back();
 	const std::uint32_t rhs_shared = rhs.dims().front();

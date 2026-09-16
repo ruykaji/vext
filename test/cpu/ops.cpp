@@ -408,6 +408,21 @@ TEST(TensorCpu, ReductionsSupportSingleAxis)
 	expect_tensor_near(row_max, { 3.0f, 6.0f });
 }
 
+TEST(TensorCpu, ReducingAllAxesReturnsOneElementTensor)
+{
+	const vext::Tensor<float> vector({ 1.0f, 2.0f, 3.0f, 4.0f });
+	const vext::Tensor<float> matrix({ { 1.0f, 2.0f }, { 3.0f, 4.0f } });
+
+	vext::Tensor<float> vector_sum({ 1 });
+	vext::reduction<vext::Op::SUM>(vector, vext::axes({ 0 }), vector_sum);
+	const auto matrix_sum = vext::reduction<vext::Op::SUM>(matrix, vext::axes({ 0, 1 }));
+
+	expect_shape_eq(vector_sum.dims(), { 1 });
+	expect_tensor_near(vector_sum, { 10.0f });
+	expect_shape_eq(matrix_sum.dims(), { 1 });
+	expect_tensor_near(matrix_sum, { 10.0f });
+}
+
 TEST(TensorCpu, ReductionsSupportMultipleAxes)
 {
 	const vext::Tensor<float> tensor({ { { 1.0f, 2.0f }, { 3.0f, 4.0f } }, { { 5.0f, 6.0f }, { 7.0f, 8.0f } } });
