@@ -79,7 +79,15 @@ struct Pool
 	{
 		for(Block* root : roots)
 			{
-				std::free(root->ptr);
+				if(root->ptr != nullptr)
+					{
+						const cudaError_t error = cudaFree(root->ptr);
+
+						if(error != cudaSuccess && error != cudaErrorCudartUnloading)
+							{
+								std::cerr << __FILE__ << ":" << __LINE__ << " CUDA Error while releasing allocator pool: " << cudaGetErrorString(error) << std::endl;
+							}
+					}
 
 				Block* block = root;
 
