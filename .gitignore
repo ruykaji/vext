@@ -1,5 +1,8 @@
 .cache
+__pycache__
 build
 compile_commands.json
 /benchmarks/build/
+/benchmarks/.venv/
+/benchmarks/RESULTS.dev.md
 /benchmarks/CMakeUserPresets.json

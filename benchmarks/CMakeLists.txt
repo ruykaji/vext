@@ -29,6 +29,10 @@ endif()
 
 function(vext_add_benchmark target source)
 	add_executable(${target} ${source})
+	target_include_directories(${target}
+		PRIVATE
+			"${CMAKE_CURRENT_SOURCE_DIR}/include"
+	)
 	target_compile_features(${target}
 		PRIVATE
 			cxx_std_20

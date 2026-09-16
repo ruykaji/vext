@@ -1,35 +1,46 @@
 # vext benchmarks
 
-The benchmark project is standalone and compares vext with Eigen on CPU and NVIDIA Thrust, cuBLAS, and cuSPARSE on CUDA. Eigen and Google Benchmark are resolved through Conan; CUDA reference libraries are provided by the installed CUDA toolkit.
+## Run
 
-The paired suite covers dense unary, binary, broadcast, logical, reduction, and matrix multiplication operations. Standard CSR scatter and CSR matrix-vector multiplication cases use Eigen Sparse on CPU and cuSPARSE on CUDA. All benchmark inputs are either 1D vectors or 2D matrices, and Eigen runs single-threaded.
-
-## Requirements
-
-- CMake 3.24 or newer
-- Conan 2
-- Ninja
-- A C++20 compiler
-- CUDA toolkit and an NVIDIA GPU for CUDA benchmarks
-
-## Build and run
-
-From the project root, run:
+From the project root:
 
 ```bash
 python3 benchmarks/run.py
 ```
 
-The script installs benchmark dependencies, builds vext, builds the standalone benchmark project, and runs the comparison suite.
-
-To run only CPU benchmarks:
+This builds the benchmark suite and runs CPU, available CUDA, and PyTorch reference measurements. Install the PyTorch environment once before the first run:
 
 ```bash
-python3 benchmarks/run.py --cuda off
+python3 -m venv benchmarks/.venv
+benchmarks/.venv/bin/pip install -r benchmarks/requirements.txt
 ```
 
-To require CUDA benchmarks:
+Useful selections:
 
 ```bash
-python3 benchmarks/run.py --cuda on
+python3 benchmarks/run.py --cpu
+python3 benchmarks/run.py --cuda --reduction
+python3 benchmarks/run.py --cpu --cuda --unary --axis-reduction
 ```
+
+Available operation selectors: `--unary`, `--binary`, `--broadcast`, `--logical`, `--reduction`, `--axis-reduction`, `--csr-scatter`, `--csr-spmv`, and `--matmul`.
+
+Quick runs measure each case once and write the ignored `benchmarks/RESULTS.dev.md`.
+
+For paper collection, run 20 independent samples per case and write median/IQR results to `benchmarks/RESULTS.md`:
+
+```bash
+python3 benchmarks/run.py --paper --machine-id i5-rtx5060
+```
+
+## What is measured
+
+All measurements use FP32.
+
+- CPU kernel baseline: vext versus single-threaded Eigen.
+- CUDA kernel baselines: CUB for dense elementwise/reduction operations, cuBLAS SGEMM for matrix multiplication, and cuSPARSE for CSR operations.
+- PyTorch: a separate eager-mode framework comparison. Inputs are created before timing; eager dispatch and output creation are included. PyTorch CPU uses its normal thread policy.
+
+Dense unary, binary, broadcast, logical, whole-tensor reduction, and final-axis reduction workloads cover 1D--4D neural-network-style tensors at small, medium, and large scales. Matrix multiplication covers square and rectangular GEMM shapes. CSR scatter and CSR SpMV use rows/degree/features profiles `1024/8/16`, `4096/16/64`, and `16384/32/128`.
+
+CPU kernel timings use Google Benchmark CPU time. CUDA kernel timings use CUDA events. Native kernel measurements exclude allocation, transfers, handles/descriptors, and one-time sparse preprocessing; they represent steady-state kernel time, not end-to-end latency.
