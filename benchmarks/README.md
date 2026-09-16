@@ -8,12 +8,7 @@ From the project root:
 python3 benchmarks/run.py
 ```
 
-This builds the benchmark suite and runs CPU, available CUDA, and PyTorch reference measurements. Install the PyTorch environment once before the first run:
-
-```bash
-python3 -m venv benchmarks/.venv
-benchmarks/.venv/bin/pip install -r benchmarks/requirements.txt
-```
+This builds the benchmark suite and runs CPU and available CUDA reference measurements.
 
 Useful selections:
 
@@ -39,7 +34,6 @@ All measurements use FP32.
 
 - CPU kernel baseline: vext versus single-threaded Eigen.
 - CUDA kernel baselines: CUB for dense elementwise/reduction operations, cuBLAS SGEMM for matrix multiplication, and cuSPARSE for CSR operations.
-- PyTorch: a separate eager-mode framework comparison. Inputs are created before timing; eager dispatch and output creation are included. PyTorch CPU uses its normal thread policy.
 
 Dense unary, binary, broadcast, logical, whole-tensor reduction, and final-axis reduction workloads cover 1D--4D neural-network-style tensors at small, medium, and large scales. Matrix multiplication covers square and rectangular GEMM shapes. CSR scatter and CSR SpMV use rows/degree/features profiles `1024/8/16`, `4096/16/64`, and `16384/32/128`.
 

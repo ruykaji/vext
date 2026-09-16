@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 BENCHMARK_VERSIONS = {
-    "Eigen": "5.0.1",
+    "Eigen": "3.4.1",
     "Google Benchmark": "1.9.5",
 }
 
@@ -178,7 +178,14 @@ def install_conan_dependencies(
             "--output-folder",
             output,
             "--build=missing",
-            "--settings=build_type=Release",
+            "-s:h",
+            "build_type=Release",
+            "-s:b",
+            "build_type=Release",
+            "-s:h",
+            "compiler.cppstd=17",
+            "-s:b",
+            "compiler.cppstd=17",
         ]
     )
 
@@ -485,61 +492,9 @@ def run_single_results(
     return result_files
 
 
-def run_python_results(
-    benchmark_root,
-    work,
-    cpu_enabled,
-    cuda_enabled,
-    operation_families,
-):
-    """Run the PyTorch eager-mode reference and return its JSON files."""
-    python = benchmark_root / ".venv" / "bin" / "python"
-
-    if not python.exists():
-        raise RuntimeError("Python benchmark environment is missing. Create it with python3 -m venv benchmarks/.venv and install requirements.txt.")
-
-    raw = work / "raw"
-    script = benchmark_root / "src" / "pytorch.py"
-    result_files = []
-    backend_names = []
-
-    if cpu_enabled:
-        backend_names.append("cpu")
-
-    if cuda_enabled:
-        backend_names.append("cuda")
-
-    for backend in backend_names:
-        selected_families = operation_families or list(OPERATION_FAMILY_NAMES)
-
-        if backend == "cuda":
-            probe = "import torch; raise SystemExit(not torch.cuda.is_available())"
-            available = (
-                subprocess.run(
-                    [python, "-c", probe],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                ).returncode
-                == 0
-            )
-
-            if not available:
-                print("Skipping PyTorch CUDA benchmarks: PyTorch cannot access a CUDA GPU.")
-                continue
-
-        output = raw / f"latest_pytorch_{backend}.json"
-        command = [python, script, "--backend", backend, "--output", output]
-        command.extend(["--families", *selected_families])
-        run(command)
-        result_files.append(output)
-
-    return result_files
-
-
 def write_single_run_report(report, result_files, metadata):
     measurements = load_measurements(result_files)
     validate_measurement_pairs(measurements)
-    python_references = sorted({implementation for _, _, _, implementation in measurements if implementation == "PyTorch"})
 
     rows = []
 
@@ -583,15 +538,6 @@ def write_single_run_report(report, result_files, metadata):
         "- Timing: one invocation per benchmark case; native C++ measurements are kernel-only.",
         "",
     ]
-
-    if python_references:
-        lines.extend(
-            [
-                f"- Python references: {', '.join(python_references)} eager API timing; input construction and transfers are excluded, while output creation and framework dispatch are included.",
-                "- CUDA Python references are synchronized before and after each operation.",
-                "",
-            ]
-        )
 
     for backend in ("CPU", "CUDA"):
         backend_rows = [row for row in rows if row["backend"] == backend]
@@ -645,7 +591,7 @@ def write_paper_report(report, result_files, metadata):
         values = sorted(samples[key])
         return statistics.median(values), values[15] - values[4]
 
-    rows = {"Kernel benchmarks": [], "PyTorch eager-mode reference": []}
+    rows = {"Kernel benchmarks": []}
 
     for backend, operation, problem, implementation in sorted(samples):
         if implementation != "Vext":
@@ -659,8 +605,7 @@ def write_paper_report(report, result_files, metadata):
 
         for reference_key in sorted(references):
             reference, reference_iqr = summary(reference_key)
-            section = "PyTorch eager-mode reference" if reference_key[3] == "PyTorch" else "Kernel benchmarks"
-            rows[section].append(
+            rows["Kernel benchmarks"].append(
                 (
                     backend,
                     operation,
@@ -685,9 +630,7 @@ def write_paper_report(report, result_files, metadata):
         f"- CPU: {metadata['cpu']}",
         f"- GPU: {metadata.get('gpu', 'Not benchmarked')}",
         f"- Compiler: {metadata['compiler']}",
-        f"- PyTorch: {metadata.get('pytorch', 'Not collected')}",
         "- Native CPU metric: Google Benchmark CPU time; native CUDA metric: CUDA event time.",
-        "- PyTorch input tensors are allocated before timing; eager dispatch and output creation are included, while transfers are excluded.",
         "",
     ]
     for section, section_rows in rows.items():
@@ -1184,11 +1127,6 @@ def parse_arguments():
         help="Run CUDA benchmarks and require an accessible NVIDIA device.",
     )
     parser.add_argument(
-        "--pytorch",
-        action="store_true",
-        help="Include PyTorch eager-mode reference measurements.",
-    )
-    parser.add_argument(
         "--paper",
         action="store_true",
         help=f"Collect {PAPER_SAMPLES} independent fresh-process samples and write a paper report.",
@@ -1221,7 +1159,6 @@ def parse_arguments():
 
 
 def main():
-    no_arguments = len(sys.argv) == 1
     arguments = parse_arguments()
     benchmark_root = pathlib.Path(__file__).resolve().parent
     root = benchmark_root.parent
@@ -1240,7 +1177,6 @@ def main():
 
     cpu_enabled, cuda_enabled = choose_backends(arguments.cpu, arguments.cuda)
     operation_families = selected_operation_families(arguments)
-    pytorch_enabled = no_arguments or arguments.pytorch or arguments.paper
 
     if arguments.clean and work.exists():
         shutil.rmtree(work)
@@ -1259,16 +1195,6 @@ def main():
         jobs,
     )
     metadata = paper_metadata(root, build, cuda_enabled, machine_id)
-
-    if pytorch_enabled:
-        python = benchmark_root / ".venv" / "bin" / "python"
-        metadata["pytorch"] = command_output(
-            [
-                python,
-                "-c",
-                "import torch; print(torch.__version__ + ' (CUDA ' + str(torch.version.cuda) + ')')",
-            ]
-        )
 
     metadata.update(
         {
@@ -1290,17 +1216,6 @@ def main():
         for sample in range(1, PAPER_SAMPLES + 1):
             sample_files = run_single_results(build, work, cpu_enabled, cuda_enabled, operation_families)
 
-            if pytorch_enabled:
-                sample_files.extend(
-                    run_python_results(
-                        benchmark_root,
-                        work,
-                        cpu_enabled,
-                        cuda_enabled,
-                        operation_families,
-                    )
-                )
-
             for source in sample_files:
                 destination = paper_raw / f"sample-{sample:02d}-{source.name}"
                 source.replace(destination)
@@ -1309,17 +1224,6 @@ def main():
         write_paper_report(report, result_files, metadata)
     else:
         result_files = run_single_results(build, work, cpu_enabled, cuda_enabled, operation_families)
-
-        if pytorch_enabled:
-            result_files.extend(
-                run_python_results(
-                    benchmark_root,
-                    work,
-                    cpu_enabled,
-                    cuda_enabled,
-                    operation_families,
-                )
-            )
 
         write_single_run_report(report, result_files, metadata)
 

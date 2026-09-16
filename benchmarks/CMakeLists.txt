@@ -50,6 +50,7 @@ target_link_libraries(bench_compare_cpu
 		benchmark::benchmark
 		Eigen3::Eigen
 )
+
 target_compile_definitions(bench_compare_cpu
 	PRIVATE
 		EIGEN_DONT_PARALLELIZE

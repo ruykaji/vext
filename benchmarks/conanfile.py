@@ -6,5 +6,6 @@ class VextBenchmarksConan(ConanFile):
     generators = "CMakeDeps", "CMakeToolchain"
 
     def requirements(self):
+        self.requires("abseil/20240722.0")
         self.requires("benchmark/1.9.5")
-        self.requires("eigen/5.0.1")
+        self.requires("eigen/3.4.1")
