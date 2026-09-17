@@ -8,7 +8,7 @@
 namespace vext::core::cpu::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename T3>
 void
 scalar(
 	T1*                 out,
@@ -20,7 +20,7 @@ scalar(
 		{
 			if constexpr(Kp == Op::ADD)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = (src[i] + noise(i)) + value;
 						}
@@ -31,7 +31,7 @@ scalar(
 				}
 			else if constexpr(Kp == Op::SUB)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = (src[i] + noise(i)) - value;
 						}
@@ -42,7 +42,7 @@ scalar(
 				}
 			if constexpr(Kp == Op::MUL)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = (src[i] + noise(i)) * value;
 						}
@@ -53,7 +53,7 @@ scalar(
 				}
 			else if constexpr(Kp == Op::DIV)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = (src[i] + noise(i)) / value;
 						}
@@ -64,7 +64,7 @@ scalar(
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = (src[i] + noise(i)) ^ value;
 						}

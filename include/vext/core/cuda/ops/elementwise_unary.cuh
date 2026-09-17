@@ -108,14 +108,16 @@ assign_sum(
 		}
 }
 
-template <Op Kp, ParameterMode Mp, typename T1, typename Dp = core::no_value_t, core::Arithmetic... Is>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename Dp = core::no_value_t, core::Arithmetic... Is>
 requires core::UnaryOperation<Kp>
 __global__ void
 unary(
-	T1* __restrict__ out,
+	T1*                 out,
+	const T2*           src,
 	const std::uint32_t N,
-	const Dp            maybe_descriptor,
-	Is... param)
+	const float         a                = 0.0f,
+	const float         b                = 0.0f,
+	const Dp            maybe_descriptor = {})
 {
 	const std::uint32_t tid    = blockIdx.x * blockDim.x + threadIdx.x;
 	const std::uint32_t stride = blockDim.x * gridDim.x;
@@ -124,255 +126,240 @@ unary(
 		{
 			if constexpr(Kp == Op::ABS)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::abs(out[i] + noise(maybe_descriptor, i));
+							out[i] = ::cuda::std::abs(src[i] + noise(maybe_descriptor, i));
 						}
 					else
 						{
-							out[i] = ::cuda::std::abs(out[i]);
+							out[i] = ::cuda::std::abs(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::SIN)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::sin(out[i] + noise(maybe_descriptor, i));
+							out[i] = ::cuda::std::sin(src[i] + noise(maybe_descriptor, i));
 						}
 					else
 						{
-							out[i] = ::cuda::std::sin(out[i]);
+							out[i] = ::cuda::std::sin(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::COS)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::cos(out[i] + noise(maybe_descriptor, i));
+							out[i] = ::cuda::std::cos(src[i] + noise(maybe_descriptor, i));
 						}
 					else
 						{
-							out[i] = ::cuda::std::cos(out[i]);
+							out[i] = ::cuda::std::cos(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::TANH)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::tanh(out[i] + noise(maybe_descriptor, i));
+							out[i] = ::cuda::std::tanh(src[i] + noise(maybe_descriptor, i));
 						}
 					else
 						{
-							out[i] = ::cuda::std::tanh(out[i]);
+							out[i] = ::cuda::std::tanh(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::NEG)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = -(out[i] + noise(maybe_descriptor, i));
+							out[i] = -(src[i] + noise(maybe_descriptor, i));
 						}
 					else
 						{
-							out[i] = -out[i];
+							out[i] = -src[i];
 						}
 				}
 			else if constexpr(Kp == Op::EXP)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::exp(out[i] + noise(maybe_descriptor, i));
+							out[i] = ::cuda::std::exp(src[i] + noise(maybe_descriptor, i));
 						}
 					else
 						{
-							out[i] = ::cuda::std::exp(out[i]);
+							out[i] = ::cuda::std::exp(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::LOG)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::log(out[i] + noise(maybe_descriptor, i));
+							out[i] = ::cuda::std::log(src[i] + noise(maybe_descriptor, i));
 						}
 					else
 						{
-							out[i] = ::cuda::std::log(out[i]);
+							out[i] = ::cuda::std::log(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::SQRT)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::sqrt(out[i] + noise(maybe_descriptor, i));
+							out[i] = ::cuda::std::sqrt(src[i] + noise(maybe_descriptor, i));
 						}
 					else
 						{
-							out[i] = ::cuda::std::sqrt(out[i]);
+							out[i] = ::cuda::std::sqrt(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::SQUARE)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] *= out[i] + noise(maybe_descriptor, i);
+							out[i] *= src[i] + noise(maybe_descriptor, i);
 						}
 					else
 						{
-							out[i] *= out[i];
+							out[i] *= src[i];
 						}
 				}
 			else if constexpr(Kp == Op::ROUND)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::round(out[i] + noise(maybe_descriptor, i));
+							out[i] = ::cuda::std::round(src[i] + noise(maybe_descriptor, i));
 						}
 					else
 						{
-							out[i] = ::cuda::std::round(out[i]);
+							out[i] = ::cuda::std::round(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::SIGMOID)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = 1.0f / (1.0f + ::cuda::std::exp(-(out[i] + noise(maybe_descriptor, i))));
+							out[i] = 1.0f / (1.0f + ::cuda::std::exp(-(src[i] + noise(maybe_descriptor, i))));
 						}
 					else
 						{
-							out[i] = 1.0f / (1.0f + ::cuda::std::exp(-out[i]));
+							out[i] = 1.0f / (1.0f + ::cuda::std::exp(-src[i]));
 						}
 				}
 			else if constexpr(Kp == Op::SOFT_RELU)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::log(1.0f + ::cuda::std::exp(out[i] + noise(maybe_descriptor, i)));
+							out[i] = ::cuda::std::log(1.0f + ::cuda::std::exp(src[i] + noise(maybe_descriptor, i)));
 						}
 					else
 						{
-							out[i] = ::cuda::std::log(1.0f + ::cuda::std::exp(out[i]));
+							out[i] = ::cuda::std::log(1.0f + ::cuda::std::exp(src[i]));
 						}
 				}
 			else if constexpr(Kp == Op::RELU)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							const auto value = out[i] + noise(maybe_descriptor, i);
+							const auto value = src[i] + noise(maybe_descriptor, i);
 							out[i]           = value > 0 ? value : 0;
 						}
 					else
 						{
-							out[i] = out[i] > 0 ? out[i] : 0;
+							out[i] = src[i] > 0 ? src[i] : 0;
 						}
 				}
 			else if constexpr(Kp == Op::SOFTMAX || Kp == Op::LOGSOFTMAX)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::exp(out[i] + noise(maybe_descriptor, i));
+							out[i] = ::cuda::std::exp(src[i] + noise(maybe_descriptor, i));
 						}
 					else
 						{
-							out[i] = ::cuda::std::exp(out[i]);
+							out[i] = ::cuda::std::exp(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::SOFTMIN)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = ::cuda::std::exp(-(out[i] + noise(maybe_descriptor, i)));
+							out[i] = ::cuda::std::exp(-(src[i] + noise(maybe_descriptor, i)));
 						}
 					else
 						{
-							out[i] = ::cuda::std::exp(-out[i]);
+							out[i] = ::cuda::std::exp(-src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::LEAKY_RELU)
 				{
-					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
-
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							const auto value = out[i] + noise(maybe_descriptor, i);
+							const auto value = src[i] + noise(maybe_descriptor, i);
 							out[i]           = value > 0 ? value : (a * value);
 						}
 					else
 						{
-							out[i] = out[i] > 0 ? out[i] : (a * out[i]);
+							out[i] = src[i] > 0 ? src[i] : (a * src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::ELU)
 				{
-					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
-
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							const auto value = out[i] + noise(maybe_descriptor, i);
+							const auto value = src[i] + noise(maybe_descriptor, i);
 							out[i]           = value > 0 ? value : a * (::cuda::std::exp(value) - 1.0f);
 						}
 					else
 						{
-							out[i] = out[i] > 0 ? out[i] : a * (::cuda::std::exp(out[i]) - 1.0f);
+							out[i] = src[i] > 0 ? src[i] : a * (::cuda::std::exp(src[i]) - 1.0f);
 						}
 				}
 			else if constexpr(Kp == Op::SWISH)
 				{
-					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
-
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							const auto value = out[i] + noise(maybe_descriptor, i);
+							const auto value = src[i] + noise(maybe_descriptor, i);
 							out[i]           = value / (1.0f + ::cuda::std::exp(-a * value));
 						}
 					else
 						{
-							out[i] = out[i] / (1.0f + ::cuda::std::exp(-a * out[i]));
+							out[i] = src[i] / (1.0f + ::cuda::std::exp(-a * src[i]));
 						}
 				}
 			else if constexpr(Kp == Op::LINEAR)
 				{
-					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
-					const float b = static_cast<float>(::cuda::std::get<1>(::cuda::std::tuple{ param... }));
-
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = a * (out[i] + noise(maybe_descriptor, i)) + b;
+							out[i] = a * (src[i] + noise(maybe_descriptor, i)) + b;
 						}
 					else
 						{
-							out[i] = a * out[i] + b;
+							out[i] = a * src[i] + b;
 						}
 				}
 			else if constexpr(Kp == Op::CLIP)
 				{
-					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
-					const float b = static_cast<float>(::cuda::std::get<1>(::cuda::std::tuple{ param... }));
-
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							const ::cuda::std::common_type_t<T1, float> value         = out[i] + noise(maybe_descriptor, i);
+							const ::cuda::std::common_type_t<T1, float> value         = src[i] + noise(maybe_descriptor, i);
 							const ::cuda::std::common_type_t<T1, float> upper_clamped = (b < value) ? b : value;
 							out[i]                                                    = (upper_clamped < a) ? a : upper_clamped;
 						}
 					else
 						{
-							const ::cuda::std::common_type_t<T1, float> upper_clamped = (b < out[i]) ? b : out[i];
+							const ::cuda::std::common_type_t<T1, float> upper_clamped = (b < src[i]) ? b : src[i];
 							out[i]                                                    = (upper_clamped < a) ? a : upper_clamped;
 						}
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-					const float a = static_cast<float>(::cuda::std::get<0>(::cuda::std::tuple{ param... }));
-					const float b = static_cast<float>(::cuda::std::get<1>(::cuda::std::tuple{ param... }));
-
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = a * ::cuda::std::pow(out[i] + noise(maybe_descriptor, i), b);
+							out[i] = a * ::cuda::std::pow(src[i] + noise(maybe_descriptor, i), b);
 						}
 					else
 						{
-							out[i] = a * ::cuda::std::pow(out[i], b);
+							out[i] = a * ::cuda::std::pow(src[i], b);
 						}
 				}
 		}
@@ -383,25 +370,42 @@ unary(
 namespace vext::core::cuda::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, core::Arithmetic... Is>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2>
 requires core::UnaryOperation<Kp>
 void
 unary(
-	T1*                 out,
-	const std::uint32_t N,
-	Is... param)
+	T1*                       out,
+	const T2*                 src,
+	const std::uint32_t       N,
+	const std::vector<float>& values)
 {
 	constexpr std::int32_t block_size = 256;
 	const std::uint32_t    grid_size  = (N + block_size - 1) / block_size;
 
-	if constexpr(Mp == ParameterMode::PERTURBED)
+	float a = 0.0f;
+	float b = 0.0f;
+
+	if(!values.empty())
+		{
+			if(values.size() == 2)
+				{
+					a = values[0];
+					b = values[1];
+				}
+			else if(values.size() == 1)
+				{
+					a = values[0];
+				}
+		}
+
+	if constexpr(Mp == EvaluationMode::PERTURBED)
 		{
 			const NoiseDescriptor& descriptor = sequentional_noise_descriptor();
-			kernel::unary<Kp, Mp><<<grid_size, block_size>>>(out, N, descriptor, param...);
+			kernel::unary<Kp, Mp><<<grid_size, block_size>>>(out, src, N, a, b, descriptor);
 		}
 	else
 		{
-			kernel::unary<Kp, Mp><<<grid_size, block_size>>>(out, N, core::no_value, param...);
+			kernel::unary<Kp, Mp><<<grid_size, block_size>>>(out, src, N, a, b, core::no_value);
 		}
 
 	CUDA_CHECK(cudaGetLastError());

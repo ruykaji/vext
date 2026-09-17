@@ -11,7 +11,7 @@
 namespace vext::core::cpu::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename T3>
 requires core::BinaryOperation<Kp>
 static void
 binary(
@@ -24,7 +24,7 @@ binary(
 		{
 			if constexpr(Kp == Op::ADD)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] + (b[i] + noise(i));
 						}
@@ -35,7 +35,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::SUB)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] - (b[i] + noise(i));
 						}
@@ -46,7 +46,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::MUL)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] * (b[i] + noise(i));
 						}
@@ -57,7 +57,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::DIV)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] / (b[i] + noise(i));
 						}
@@ -68,7 +68,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = std::pow(a[i], (b[i] + noise(i)));
 						}
@@ -79,7 +79,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::MIN)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = std::min(a[i], (b[i] + noise(i)));
 						}
@@ -90,7 +90,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::MAX)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = std::max(a[i], (b[i] + noise(i)));
 						}
@@ -101,7 +101,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::PRELU)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = std::max<T1>(0, a[i]) + (b[i] + noise(i)) * std::min<T1>(0, a[i]);
 						}
@@ -113,7 +113,7 @@ binary(
 		}
 }
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename T3>
 requires core::BinaryOperation<Kp>
 static void
 binary_with_broadcast(
@@ -135,7 +135,7 @@ binary_with_broadcast(
 		{
 			if constexpr(Kp == Op::ADD)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] + (b[b_offset] + noise(b_offset));
 						}
@@ -146,7 +146,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::SUB)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] - (b[b_offset] + noise(b_offset));
 						}
@@ -157,7 +157,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::MUL)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] * (b[b_offset] + noise(b_offset));
 						}
@@ -168,7 +168,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::DIV)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] / (b[b_offset] + noise(b_offset));
 						}
@@ -179,7 +179,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = std::pow(a[i], (b[b_offset] + noise(b_offset)));
 						}
@@ -190,7 +190,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::MIN)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = std::min(a[i], (b[b_offset] + noise(b_offset)));
 						}
@@ -201,7 +201,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::MAX)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = std::max(a[i], (b[b_offset] + noise(b_offset)));
 						}
@@ -212,7 +212,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::PRELU)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = std::max<T1>(0, a[i]) + (b[b_offset] + noise(b_offset)) * std::min<T1>(0, a[i]);
 						}

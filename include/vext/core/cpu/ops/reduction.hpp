@@ -12,7 +12,7 @@
 namespace vext::core::cpu::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2>
 requires core::ReductionOperation<Kp>
 void
 reduce(
@@ -61,7 +61,7 @@ reduce(
 				{
 					if constexpr(Kp == Op::PROD)
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint64_t index = keep_offset + reduce_offset;
 									accumulator *= static_cast<T1>(src[index] + noise(index));
@@ -73,7 +73,7 @@ reduce(
 						}
 					else if constexpr(Kp == Op::MIN)
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint64_t index = keep_offset + reduce_offset;
 									accumulator               = std::min(accumulator, static_cast<T1>(src[index] + noise(index)));
@@ -85,7 +85,7 @@ reduce(
 						}
 					else if constexpr(Kp == Op::MAX)
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint64_t index = keep_offset + reduce_offset;
 									accumulator               = std::max(accumulator, static_cast<T1>(src[index] + noise(index)));
@@ -97,7 +97,7 @@ reduce(
 						}
 					else if constexpr(Kp == Op::L2_NORM)
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint64_t index = keep_offset + reduce_offset;
 									const T1            prod  = src[index] + noise(index);
@@ -111,7 +111,7 @@ reduce(
 						}
 					else
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint64_t index = keep_offset + reduce_offset;
 									accumulator += static_cast<T1>(src[index] + noise(index));
@@ -158,7 +158,7 @@ reduce(
 						{
 							float diff = 0.0f;
 
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint64_t index = keep_offset + reduce_offset;
 									diff                      = (src[index] + noise(index)) - mean;

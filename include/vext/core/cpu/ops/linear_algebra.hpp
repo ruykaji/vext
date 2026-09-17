@@ -8,7 +8,7 @@
 namespace vext::core::cpu::ops
 {
 
-template <ParameterMode Mp, typename T1, typename T2, typename T3>
+template <EvaluationMode Mp, typename T1, typename T2, typename T3>
 void
 matmul(
 	T1* __restrict__ out,
@@ -26,7 +26,7 @@ matmul(
 
 					for(std::uint32_t n = 0; n < N; ++n)
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									out[m * N + n] += a_value * (b[p * N + n] + noise(p * N + n));
 								}

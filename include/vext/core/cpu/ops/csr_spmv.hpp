@@ -11,7 +11,7 @@
 namespace vext::core::cpu::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename T3>
 requires core::SparseReductionOperation<Kp>
 void
 csr_spmv(
@@ -46,7 +46,7 @@ csr_spmv(
 				{
 					T1 prod = 0;
 
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							prod = (A[h] + noise(h)) * x[tail[h]];
 						}
@@ -89,7 +89,7 @@ csr_spmv(
 						{
 							T1 prod = 0;
 
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									prod = (A[h] + noise(h)) * x[tail[h]];
 								}

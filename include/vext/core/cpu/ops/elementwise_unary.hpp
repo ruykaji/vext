@@ -10,252 +10,268 @@
 namespace vext::core::cpu::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, core::Arithmetic... Is>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, core::Arithmetic... Is>
 requires core::UnaryOperation<Kp>
 static void
 unary(
-	T1* __restrict__ out,
-	const std::uint32_t N,
-	Is... param)
+	T1*                       out,
+	const T2*                 src,
+	const std::uint32_t       N,
+	const std::vector<float>& values)
 {
+	float a = 0.0f;
+	float b = 0.0f;
+
+	if(!values.empty())
+		{
+			if(values.size() == 2)
+				{
+					a = values[0];
+					b = values[1];
+				}
+			else if(values.size() == 1)
+				{
+					a = values[0];
+				}
+		}
+
 	T1 accumulate = 0;
 
 	for(std::uint32_t i = 0; i < N; ++i)
 		{
 			if constexpr(Kp == Op::ABS)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::abs(out[i] + noise(i));
+							out[i] = std::abs(src[i] + noise(i));
 						}
 					else
 						{
-							out[i] = std::abs(out[i]);
+							out[i] = std::abs(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::SIN)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::sin(out[i] + noise(i));
+							out[i] = std::sin(src[i] + noise(i));
 						}
 					else
 						{
-							out[i] = std::sin(out[i]);
+							out[i] = std::sin(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::COS)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::cos(out[i] + noise(i));
+							out[i] = std::cos(src[i] + noise(i));
 						}
 					else
 						{
-							out[i] = std::cos(out[i]);
+							out[i] = std::cos(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::TANH)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::tanh(out[i] + noise(i));
+							out[i] = std::tanh(src[i] + noise(i));
 						}
 					else
 						{
-							out[i] = std::tanh(out[i]);
+							out[i] = std::tanh(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::NEG)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = -(out[i] + noise(i));
+							out[i] = -(src[i] + noise(i));
 						}
 					else
 						{
-							out[i] = -out[i];
+							out[i] = -src[i];
 						}
 				}
 			else if constexpr(Kp == Op::EXP)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::exp(out[i] + noise(i));
+							out[i] = std::exp(src[i] + noise(i));
 						}
 					else
 						{
-							out[i] = std::exp(out[i]);
+							out[i] = std::exp(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::LOG)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::log(out[i] + noise(i));
+							out[i] = std::log(src[i] + noise(i));
 						}
 					else
 						{
-							out[i] = std::log(out[i]);
+							out[i] = std::log(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::SQRT)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::sqrt(out[i] + noise(i));
+							out[i] = std::sqrt(src[i] + noise(i));
 						}
 					else
 						{
-							out[i] = std::sqrt(out[i]);
+							out[i] = std::sqrt(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::SQUARE)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] *= (out[i] + noise(i));
+							out[i] = (src[i] + noise(i)) * (src[i] + noise(i));
 						}
 					else
 						{
-							out[i] *= out[i];
+							out[i] = src[i] * src[i];
 						}
 				}
 			else if constexpr(Kp == Op::ROUND)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::round(out[i] + noise(i));
+							out[i] = std::round(src[i] + noise(i));
 						}
 					else
 						{
-							out[i] = std::round(out[i]);
+							out[i] = std::round(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::SIGMOID)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = 1.0f / (1.0f + std::exp(-(out[i] + noise(i))));
+							out[i] = 1.0f / (1.0f + std::exp(-(src[i] + noise(i))));
 						}
 					else
 						{
-							out[i] = 1.0f / (1.0f + std::exp(-out[i]));
+							out[i] = 1.0f / (1.0f + std::exp(-src[i]));
 						}
 				}
 			else if constexpr(Kp == Op::SOFT_RELU)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::log(1.0f + std::exp(out[i] + noise(i)));
+							out[i] = std::log(1.0f + std::exp(src[i] + noise(i)));
 						}
 					else
 						{
-							out[i] = std::log(1.0f + std::exp(out[i]));
+							out[i] = std::log(1.0f + std::exp(src[i]));
 						}
 				}
 			else if constexpr(Kp == Op::RELU)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] += noise(i);
-						}
-
-					out[i] = out[i] > 0 ? out[i] : 0;
-				}
-			else if constexpr(Kp == Op::SOFTMAX || Kp == Op::LOGSOFTMAX)
-				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
-						{
-							out[i] = std::exp(out[i] + noise(i));
+							const auto value = src[i] + noise(i);
+							out[i]           = value > 0 ? value : 0;
 						}
 					else
 						{
-							out[i] = std::exp(out[i]);
+							out[i] = src[i] > 0 ? src[i] : 0;
+						}
+				}
+			else if constexpr(Kp == Op::SOFTMAX || Kp == Op::LOGSOFTMAX)
+				{
+					if constexpr(Mp == EvaluationMode::PERTURBED)
+						{
+							out[i] = std::exp(src[i] + noise(i));
+						}
+					else
+						{
+							out[i] = std::exp(src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::SOFTMIN)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::exp(-(out[i] + noise(i)));
+							out[i] = std::exp(-(src[i] + noise(i)));
 						}
 					else
 						{
-							out[i] = std::exp(-out[i]);
+							out[i] = std::exp(-src[i]);
 						}
 				}
 			else if constexpr(Kp == Op::LEAKY_RELU)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] += noise(i);
-						}
-
-					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
-					out[i]        = out[i] > 0 ? out[i] : (a * out[i]);
-				}
-			else if constexpr(Kp == Op::ELU)
-				{
-					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
-
-					if constexpr(Mp == ParameterMode::PERTURBED)
-						{
-							out[i] += noise(i);
-						}
-
-					out[i] = out[i] > 0 ? out[i] : a * (std::exp(out[i]) - 1.0f);
-				}
-			else if constexpr(Kp == Op::SWISH)
-				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
-						{
-							out[i] += noise(i);
-						}
-
-					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
-					out[i]        = out[i] / (1.0f + std::exp(-a * out[i]));
-				}
-			else if constexpr(Kp == Op::LINEAR)
-				{
-					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
-					const float b = static_cast<float>(std::get<1>(std::tuple{ param... }));
-
-					if constexpr(Mp == ParameterMode::PERTURBED)
-						{
-							out[i] = a * (out[i] + noise(i)) + b;
+							const auto value = src[i] + noise(i);
+							out[i]           = value > 0 ? value : (a * value);
 						}
 					else
 						{
-							out[i] = a * out[i] + b;
+							out[i] = src[i] > 0 ? src[i] : (a * src[i]);
+						}
+				}
+			else if constexpr(Kp == Op::ELU)
+				{
+					if constexpr(Mp == EvaluationMode::PERTURBED)
+						{
+							const auto value = src[i] + noise(i);
+							out[i]           = value > 0 ? value : a * (std::exp(value) - 1.0f);
+						}
+					else
+						{
+							out[i] = src[i] > 0 ? src[i] : a * (std::exp(src[i]) - 1.0f);
+						}
+				}
+			else if constexpr(Kp == Op::SWISH)
+				{
+					if constexpr(Mp == EvaluationMode::PERTURBED)
+						{
+							const auto value = src[i] + noise(i);
+							out[i]           = value / (1.0f + std::exp(-a * value));
+						}
+					else
+						{
+							out[i] = src[i] / (1.0f + std::exp(-a * src[i]));
+						}
+				}
+			else if constexpr(Kp == Op::LINEAR)
+				{
+					if constexpr(Mp == EvaluationMode::PERTURBED)
+						{
+							out[i] = a * (src[i] + noise(i)) + b;
+						}
+					else
+						{
+							out[i] = a * src[i] + b;
 						}
 				}
 			else if constexpr(Kp == Op::CLIP)
 				{
-					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
-					const float b = static_cast<float>(std::get<1>(std::tuple{ param... }));
-
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = std::max(a, std::min(b, out[i] + noise(i)));
+							out[i] = std::max(a, std::min(b, src[i] + noise(i)));
 						}
 					else
 						{
-							out[i] = std::max(a, std::min(b, out[i]));
+							out[i] = std::max(a, std::min(b, src[i]));
 						}
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-					const float a = static_cast<float>(std::get<0>(std::tuple{ param... }));
-					const float b = static_cast<float>(std::get<1>(std::tuple{ param... }));
-
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
-							out[i] = a * std::pow(out[i] + noise(i), b);
+							out[i] = a * std::pow(src[i] + noise(i), b);
 						}
 					else
 						{
-							out[i] = a * std::pow(out[i], b);
+							out[i] = a * std::pow(src[i], b);
 						}
 				}
 

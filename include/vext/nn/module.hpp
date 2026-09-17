@@ -11,7 +11,7 @@
 namespace vext::nn::module
 {
 
-template <typename Tp, Backend Bp, ParameterMode Mp>
+template <typename Tp, Backend Bp, EvaluationMode Mp>
 class iterator
 {
 	using param_type      = optim::Parameter<float, Bp, Mp>;
@@ -139,7 +139,7 @@ private:
 namespace vext::nn
 {
 
-template <Backend Bp, ParameterMode Mp = ParameterMode::PLAIN>
+template <Backend Bp, EvaluationMode Mp = EvaluationMode::PLAIN>
 class Module
 {
 	friend module::iterator<Module, Bp, Mp>;

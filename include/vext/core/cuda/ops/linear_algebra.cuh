@@ -25,7 +25,7 @@
 namespace vext::core::cuda::ops::kernel
 {
 
-template <ParameterMode Mp, typename Dp = core::no_value_t, typename T1, typename T2, typename T3>
+template <EvaluationMode Mp, typename Dp = core::no_value_t, typename T1, typename T2, typename T3>
 __global__ void
 matmul(
 	T1* __restrict__ out,
@@ -54,7 +54,7 @@ matmul(
 
 			if(b_row < P && col < N)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							const std::uint32_t index        = b_row * N + col;
 							b_tile[threadIdx.y][threadIdx.x] = b[index] + noise(maybe_descriptor, index);
@@ -92,7 +92,7 @@ matmul(
 namespace vext::core::cuda::ops
 {
 
-template <ParameterMode Mp = ParameterMode::PLAIN, typename T1, typename T2, typename T3>
+template <EvaluationMode Mp = EvaluationMode::PLAIN, typename T1, typename T2, typename T3>
 void
 matmul(
 	T1*                 out,
@@ -105,7 +105,7 @@ matmul(
 	const dim3 block(16, 16);
 	const dim3 grid((N + 16 - 1) / 16, (M + 16 - 1) / 16);
 
-	if constexpr(Mp == ParameterMode::PERTURBED)
+	if constexpr(Mp == EvaluationMode::PERTURBED)
 		{
 			kernel::matmul<Mp><<<grid, block>>>(out, a, b, M, P, N, sequentional_noise_descriptor());
 		}

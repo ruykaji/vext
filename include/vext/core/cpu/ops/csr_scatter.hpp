@@ -12,7 +12,7 @@
 namespace vext::core::cpu::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2>
 requires core::SparseReductionOperation<Kp>
 void
 csr_scatter(
@@ -68,7 +68,7 @@ csr_scatter(
 						{
 							if constexpr(Kp == Op::PROD)
 								{
-									if constexpr(Mp == ParameterMode::PERTURBED)
+									if constexpr(Mp == EvaluationMode::PERTURBED)
 										{
 											const std::uint64_t index = t * S + k;
 											out[i * S + k] *= src[index] + noise(index);
@@ -80,7 +80,7 @@ csr_scatter(
 								}
 							else if constexpr(Kp == Op::MIN)
 								{
-									if constexpr(Mp == ParameterMode::PERTURBED)
+									if constexpr(Mp == EvaluationMode::PERTURBED)
 										{
 											const std::uint64_t index = t * S + k;
 											out[i * S + k]            = std::min<T1>(out[i * S + k], src[index] + noise(index));
@@ -92,7 +92,7 @@ csr_scatter(
 								}
 							else if constexpr(Kp == Op::MAX)
 								{
-									if constexpr(Mp == ParameterMode::PERTURBED)
+									if constexpr(Mp == EvaluationMode::PERTURBED)
 										{
 											const std::uint64_t index = t * S + k;
 											out[i * S + k]            = std::max<T1>(out[i * S + k], src[index] + noise(index));
@@ -104,7 +104,7 @@ csr_scatter(
 								}
 							else
 								{
-									if constexpr(Mp == ParameterMode::PERTURBED)
+									if constexpr(Mp == EvaluationMode::PERTURBED)
 										{
 											const std::uint64_t index = t * S + k;
 											out[i * S + k] += src[index] + noise(index);
@@ -144,7 +144,7 @@ csr_scatter(
 								{
 									float diff = 0.0f;
 
-									if constexpr(Mp == ParameterMode::PERTURBED)
+									if constexpr(Mp == EvaluationMode::PERTURBED)
 										{
 											const std::uint64_t index = t * S + k;
 											diff                      = (static_cast<float>(src[t * S + k]) + noise(index)) - mean_buffer[k];

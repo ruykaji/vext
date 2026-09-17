@@ -54,7 +54,7 @@ axis_offset(
 	return offset;
 }
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename Dp = core::no_value_t>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename Dp = core::no_value_t>
 requires core::ReductionOperation<Kp>
 __global__ void
 reduce(
@@ -91,7 +91,7 @@ reduce(
 
 					if constexpr(Kp == Op::PROD)
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint32_t index = keep_offset + reduce_offset;
 									accumulator *= static_cast<T1>(src[index] + noise(maybe_descriptor, index));
@@ -103,7 +103,7 @@ reduce(
 						}
 					else if constexpr(Kp == Op::MIN)
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint32_t index = keep_offset + reduce_offset;
 									const T1            value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
@@ -117,7 +117,7 @@ reduce(
 						}
 					else if constexpr(Kp == Op::MAX)
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint32_t index = keep_offset + reduce_offset;
 									const T1            value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
@@ -131,7 +131,7 @@ reduce(
 						}
 					else if constexpr(Kp == Op::L2_NORM)
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint32_t index   = keep_offset + reduce_offset;
 									const T1            product = src[index] + noise(maybe_descriptor, index);
@@ -147,7 +147,7 @@ reduce(
 						{
 							float diff = 0.0f;
 
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint32_t index = keep_offset + reduce_offset;
 									diff                      = (src[index] + noise(maybe_descriptor, index)) - out[i];
@@ -161,7 +161,7 @@ reduce(
 						}
 					else
 						{
-							if constexpr(Mp == ParameterMode::PERTURBED)
+							if constexpr(Mp == EvaluationMode::PERTURBED)
 								{
 									const std::uint32_t index = keep_offset + reduce_offset;
 									accumulator += static_cast<T1>(src[index] + noise(maybe_descriptor, index));
@@ -283,7 +283,7 @@ reduce(
 namespace vext::core::cuda::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2>
 requires core::ReductionOperation<Kp>
 void
 reduce(
@@ -317,7 +317,7 @@ reduce(
 
 	if constexpr(Kp == Op::VAR || Kp == Op::STD)
 		{
-			if constexpr(Mp == ParameterMode::PERTURBED)
+			if constexpr(Mp == EvaluationMode::PERTURBED)
 				{
 					const NoiseDescriptor& descriptor = sequentional_noise_descriptor();
 					kernel::reduce<Op::MEAN, Mp><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta, descriptor);
@@ -337,7 +337,7 @@ reduce(
 		}
 	else
 		{
-			if constexpr(Mp == ParameterMode::PERTURBED)
+			if constexpr(Mp == EvaluationMode::PERTURBED)
 				{
 					kernel::reduce<Kp, Mp><<<grid_size, block_size>>>(out, src, N, M, keep_meta, reduce_meta, sequentional_noise_descriptor());
 					CUDA_CHECK(cudaGetLastError());

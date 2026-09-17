@@ -48,7 +48,7 @@ has_cuda_device()
 	return err == cudaSuccess;
 }
 
-template <vext::ParameterMode Mp = vext::ParameterMode::PLAIN>
+template <vext::EvaluationMode Mp = vext::EvaluationMode::PLAIN>
 class ParameterModule : public vext::nn::Module<vext::Backend::CUDA, Mp>
 {
 public:
@@ -57,8 +57,8 @@ public:
 		  first(2),
 		  second(2, 2)
 	{
-		static_cast<vext::Tensor<float, vext::Backend::CUDA>&>(first).set_from({ 1.0f, 2.0f });
-		static_cast<vext::Tensor<float, vext::Backend::CUDA>&>(second).set_from({ 3.0f, 4.0f, 5.0f, 6.0f });
+		first.tensor().set_from({ 1.0f, 2.0f });
+		second.tensor().set_from({ 3.0f, 4.0f, 5.0f, 6.0f });
 	}
 
 	vext::optim::Parameter<float, vext::Backend::CUDA, Mp> first;
@@ -123,12 +123,12 @@ TEST(NnCuda, ModuleIteratesRegisteredParameters)
 	vext::nn::Module<vext::Backend::CUDA>::iterator it = module.begin();
 
 	ASSERT_NE(it, module.end());
-	EXPECT_EQ((static_cast<const vext::Tensor<float, vext::Backend::CUDA>&>(*it).dims()), (std::vector<std::uint32_t>{ 2 }));
+	EXPECT_EQ(it->tensor().dims(), (std::vector<std::uint32_t>{ 2 }));
 
 	++it;
 
 	ASSERT_NE(it, module.end());
-	EXPECT_EQ((static_cast<const vext::Tensor<float, vext::Backend::CUDA>&>(*it).dims()), (std::vector<std::uint32_t>{ 2, 2 }));
+	EXPECT_EQ(it->tensor().dims(), (std::vector<std::uint32_t>{ 2, 2 }));
 
 	++it;
 	EXPECT_EQ(it, module.end());
@@ -159,7 +159,7 @@ TEST(NnCuda, CopyMutationActivationLeavesOriginalUnchanged)
 
 	const vext::Tensor<float, vext::Backend::CUDA> input({ -2.0f, 3.0f });
 
-	const vext::Tensor<float, vext::Backend::CUDA> output = vext::nn::activation::ELU<vext::Backend::CUDA, vext::Mutation::COPY>{}(input, 2.0f);
+	const vext::Tensor<float, vext::Backend::CUDA> output = vext::nn::activation::ELU<vext::Backend::CUDA, vext::Mutation::OUT_OF_PLACE>{}(input, 2.0f);
 
 	expect_cuda_tensor_near(input, { -2.0f, 3.0f });
 	expect_cuda_tensor_near(output, { 2.0f * (std::exp(-2.0f) - 1.0f), 3.0f });
@@ -177,8 +177,8 @@ TEST(NnCuda, InitializersWriteFiniteCudaTensorValues)
 
 	uniform_parameter.xavier_uniform();
 	normal_parameter.kaiming_normal(0.25f);
-	const vext::Tensor<float, vext::Backend::CUDA>& uniform_weight = uniform_parameter;
-	const vext::Tensor<float, vext::Backend::CUDA>& normal_weight  = normal_parameter;
+	const vext::Tensor<float, vext::Backend::CUDA>& uniform_weight = uniform_parameter.tensor();
+	const vext::Tensor<float, vext::Backend::CUDA>& normal_weight  = normal_parameter.tensor();
 
 	const float sigma = 2.0f / (8.0f + 4.0f);
 	const float bound = std::sqrt(3.0f * sigma);
@@ -200,14 +200,14 @@ TEST(NnCuda, LinearRegistersParametersAndRunsForward)
 	vext::nn::Module<vext::Backend::CUDA>::iterator it = layer.begin();
 
 	ASSERT_NE(it, layer.end());
-	EXPECT_EQ((static_cast<const vext::Tensor<float, vext::Backend::CUDA>&>(*it).dims()), (std::vector<std::uint32_t>{ 3, 4 }));
-	expect_cuda_tensor_finite(*it);
+	EXPECT_EQ(it->tensor().dims(), (std::vector<std::uint32_t>{ 3, 4 }));
+	expect_cuda_tensor_finite(it->tensor());
 
 	++it;
 
 	ASSERT_NE(it, layer.end());
-	EXPECT_EQ((static_cast<const vext::Tensor<float, vext::Backend::CUDA>&>(*it).dims()), (std::vector<std::uint32_t>{ 4 }));
-	expect_cuda_tensor_finite(*it);
+	EXPECT_EQ(it->tensor().dims(), (std::vector<std::uint32_t>{ 4 }));
+	expect_cuda_tensor_finite(it->tensor());
 
 	const vext::Tensor<float, vext::Backend::CUDA> input({ { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } });
 	const vext::Tensor<float, vext::Backend::CUDA> output = layer(input);
@@ -226,12 +226,12 @@ TEST(NnCudaNoise, PerturbedLinearUsesEachParametersConfiguredSeed)
 	constexpr std::uint32_t weight_seed = 101;
 	constexpr std::uint32_t bias_seed   = 202;
 
-	vext::nn::layer::Linear<vext::Backend::CUDA, vext::ParameterMode::PERTURBED> layer(2, 2);
-	auto                                                                         parameter = layer.begin();
-	static_cast<vext::Tensor<float, vext::Backend::CUDA>&>(*parameter).set_from({ 1.0f, 1.0f, 1.0f, 1.0f });
+	vext::nn::layer::Linear<vext::Backend::CUDA, vext::EvaluationMode::PERTURBED> layer(2, 2);
+	auto                                                                          parameter = layer.begin();
+	parameter->tensor().set_from({ 1.0f, 1.0f, 1.0f, 1.0f });
 	parameter->set_seed({ weight_seed });
 	++parameter;
-	static_cast<vext::Tensor<float, vext::Backend::CUDA>&>(*parameter).set_from({ 0.0f, 0.0f });
+	parameter->tensor().set_from({ 0.0f, 0.0f });
 	parameter->set_seed({ bias_seed });
 
 	vext::core::cuda::NoiseDescriptor& descriptor = vext::core::cuda::sequentional_noise_descriptor();

@@ -25,7 +25,7 @@
 namespace vext::core::cuda::ops::kernel
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
 __global__ void
 scalar(
 	T1*                 out,
@@ -41,7 +41,7 @@ scalar(
 		{
 			if constexpr(Kp == Op::ADD)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = (src[i] + noise(maybe_descriptor, i)) + value;
 						}
@@ -52,7 +52,7 @@ scalar(
 				}
 			else if constexpr(Kp == Op::SUB)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = (src[i] + noise(maybe_descriptor, i)) - value;
 						}
@@ -63,7 +63,7 @@ scalar(
 				}
 			else if constexpr(Kp == Op::MUL)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = (src[i] + noise(maybe_descriptor, i)) * value;
 						}
@@ -74,7 +74,7 @@ scalar(
 				}
 			else if constexpr(Kp == Op::DIV)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = (src[i] + noise(maybe_descriptor, i)) / value;
 						}
@@ -85,7 +85,7 @@ scalar(
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = ::cuda::std::pow(src[i] + noise(maybe_descriptor, i), value);
 						}
@@ -102,7 +102,7 @@ scalar(
 namespace vext::core::cuda::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2>
 void
 scalar(
 	T1*                 src,
@@ -112,7 +112,7 @@ scalar(
 	constexpr std::uint32_t block_size = 256;
 	const std::uint32_t     grid_size  = (N + block_size - 1) / block_size;
 
-	if constexpr(Mp == ParameterMode::PERTURBED)
+	if constexpr(Mp == EvaluationMode::PERTURBED)
 		{
 			const NoiseDescriptor& descriptor = sequentional_noise_descriptor();
 			kernel::scalar<Kp, Mp><<<grid_size, block_size>>>(src, src, N, descriptor);

@@ -60,11 +60,11 @@ enum class Op : std::uint8_t
 
 enum class Mutation : std::uint8_t
 {
-	IN_PLACE = 0,
-	COPY
+	OUT_OF_PLACE = 0,
+	IN_PLACE
 };
 
-enum class ParameterMode : std::uint8_t
+enum class EvaluationMode : std::uint8_t
 {
 	PLAIN = 0,
 	PERTURBED,

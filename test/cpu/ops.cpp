@@ -43,7 +43,7 @@ set_noise_descriptor(
 
 template <vext::Op Kp>
 concept UnaryCallable = requires(vext::Tensor<float>& tensor) {
-	vext::unary<Kp>(tensor);
+	vext::unary<Kp>(tensor, vext::values({}), tensor);
 };
 
 template <vext::Op Kp>
@@ -168,7 +168,7 @@ TEST(TensorCpu, OperationsRejectEmptyInputTensors)
 	const vext::Tensor<std::uint32_t> head({ 0U, 1U, 2U });
 	const vext::Tensor<std::uint32_t> tail({ 0U, 1U });
 
-	EXPECT_THROW(vext::unary<vext::Op::RELU>(empty), std::runtime_error);
+	EXPECT_THROW(vext::unary<vext::Op::RELU>(empty, vext::values({}), empty), std::runtime_error);
 
 	EXPECT_THROW((void)vext::binary<vext::Op::ADD>(empty, values), std::runtime_error);
 	EXPECT_THROW((void)vext::binary<vext::Op::ADD>(values, empty), std::runtime_error);
@@ -265,101 +265,110 @@ TEST(TensorCpu, PreluReturnedOutputLeavesInputsUnchanged)
 TEST(TensorCpu, ParameterlessUnaryOpsMutateTensor)
 {
 	vext::Tensor<float> abs_tensor({ -1.0f, 0.0f, 4.0f });
-	vext::unary<vext::Op::ABS>(abs_tensor);
+	vext::unary<vext::Op::ABS>(abs_tensor, vext::values({}), abs_tensor);
 	expect_tensor_near(abs_tensor, { 1.0f, 0.0f, 4.0f });
 
 	vext::Tensor<float> sin_tensor({ 0.0f, static_cast<float>(std::numbers::pi / 2.0) });
-	vext::unary<vext::Op::SIN>(sin_tensor);
+	vext::unary<vext::Op::SIN>(sin_tensor, vext::values({}), sin_tensor);
 	expect_tensor_near(sin_tensor, { 0.0f, 1.0f });
 
 	vext::Tensor<float> cos_tensor({ 0.0f, static_cast<float>(std::numbers::pi) });
-	vext::unary<vext::Op::COS>(cos_tensor);
+	vext::unary<vext::Op::COS>(cos_tensor, vext::values({}), cos_tensor);
 	expect_tensor_near(cos_tensor, { 1.0f, -1.0f });
 
 	vext::Tensor<float> exp_tensor({ 0.0f, 1.0f });
-	vext::unary<vext::Op::EXP>(exp_tensor);
+	vext::unary<vext::Op::EXP>(exp_tensor, vext::values({}), exp_tensor);
 	expect_tensor_near(exp_tensor, { 1.0f, std::exp(1.0f) });
 
 	vext::Tensor<float> log_tensor({ 1.0f, std::exp(2.0f) });
-	vext::unary<vext::Op::LOG>(log_tensor);
+	vext::unary<vext::Op::LOG>(log_tensor, vext::values({}), log_tensor);
 	expect_tensor_near(log_tensor, { 0.0f, 2.0f });
 
 	vext::Tensor<float> sqrt_tensor({ 1.0f, 4.0f, 9.0f });
-	vext::unary<vext::Op::SQRT>(sqrt_tensor);
+	vext::unary<vext::Op::SQRT>(sqrt_tensor, vext::values({}), sqrt_tensor);
 	expect_tensor_near(sqrt_tensor, { 1.0f, 2.0f, 3.0f });
 
 	vext::Tensor<float> square_tensor({ -2.0f, 3.0f });
-	vext::unary<vext::Op::SQUARE>(square_tensor);
+	vext::unary<vext::Op::SQUARE>(square_tensor, vext::values({}), square_tensor);
 	expect_tensor_near(square_tensor, { 4.0f, 9.0f });
 
 	vext::Tensor<float> round_tensor({ 1.2f, 1.5f, -1.6f });
-	vext::unary<vext::Op::ROUND>(round_tensor);
+	vext::unary<vext::Op::ROUND>(round_tensor, vext::values({}), round_tensor);
 	expect_tensor_near(round_tensor, { 1.0f, 2.0f, -2.0f });
+}
+
+TEST(TensorCpu, UnaryReturnedOutputLeavesInputUnchanged)
+{
+	const vext::Tensor<float> values({ -2.0f, 0.0f, 3.0f });
+	const vext::Tensor<float> result = vext::unary<vext::Op::ABS>(values, vext::values({}));
+
+	expect_tensor_near(result, { 2.0f, 0.0f, 3.0f });
+	expect_tensor_near(values, { -2.0f, 0.0f, 3.0f });
 }
 
 TEST(TensorCpu, ActivationUnaryOpsMutateTensor)
 {
 	vext::Tensor<float> sigmoid_tensor({ 0.0f, 2.0f });
-	vext::unary<vext::Op::SIGMOID>(sigmoid_tensor);
+	vext::unary<vext::Op::SIGMOID>(sigmoid_tensor, vext::values({}), sigmoid_tensor);
 	expect_tensor_near(sigmoid_tensor, { 0.5f, 1.0f / (1.0f + std::exp(-2.0f)) });
 
 	vext::Tensor<float> soft_relu_tensor({ 0.0f, 2.0f });
-	vext::unary<vext::Op::SOFT_RELU>(soft_relu_tensor);
+	vext::unary<vext::Op::SOFT_RELU>(soft_relu_tensor, vext::values({}), soft_relu_tensor);
 	expect_tensor_near(soft_relu_tensor, { std::log(2.0f), std::log(1.0f + std::exp(2.0f)) });
 
 	vext::Tensor<float> relu_tensor({ -2.0f, 0.0f, 3.0f });
-	vext::unary<vext::Op::RELU>(relu_tensor);
+	vext::unary<vext::Op::RELU>(relu_tensor, vext::values({}), relu_tensor);
 	expect_tensor_near(relu_tensor, { 0.0f, 0.0f, 3.0f });
 
 	vext::Tensor<float> leaky_relu_tensor({ -2.0f, 3.0f });
-	vext::unary<vext::Op::LEAKY_RELU>(leaky_relu_tensor, 0.25f);
+	vext::unary<vext::Op::LEAKY_RELU>(leaky_relu_tensor, vext::values({ 0.25f }), leaky_relu_tensor);
 	expect_tensor_near(leaky_relu_tensor, { -0.5f, 3.0f });
 
 	vext::Tensor<float> elu_tensor({ -1.0f, 2.0f });
-	vext::unary<vext::Op::ELU>(elu_tensor, 2.0f);
+	vext::unary<vext::Op::ELU>(elu_tensor, vext::values({ 2.0f }), elu_tensor);
 	expect_tensor_near(elu_tensor, { 2.0f * (std::exp(-1.0f) - 1.0f), 2.0f });
 
 	vext::Tensor<float> swish_tensor({ -1.0f, 2.0f });
-	vext::unary<vext::Op::SWISH>(swish_tensor, 1.0f);
+	vext::unary<vext::Op::SWISH>(swish_tensor, vext::values({ 1.0f }), swish_tensor);
 	expect_tensor_near(swish_tensor, { -1.0f / (1.0f + std::exp(1.0f)), 2.0f / (1.0f + std::exp(-2.0f)) });
 }
 
 TEST(TensorCpu, NormalizationUnaryOpsMutateTensor)
 {
 	vext::Tensor<float> softmax_tensor({ 1.0f, 2.0f, 3.0f });
-	vext::unary<vext::Op::SOFTMAX>(softmax_tensor);
+	vext::unary<vext::Op::SOFTMAX>(softmax_tensor, vext::values({}), softmax_tensor);
 	const float softmax_sum = std::exp(1.0f) + std::exp(2.0f) + std::exp(3.0f);
 	expect_tensor_near(softmax_tensor, { std::exp(1.0f) / softmax_sum, std::exp(2.0f) / softmax_sum, std::exp(3.0f) / softmax_sum });
 
 	vext::Tensor<float> softmin_tensor({ 1.0f, 2.0f, 3.0f });
-	vext::unary<vext::Op::SOFTMIN>(softmin_tensor);
+	vext::unary<vext::Op::SOFTMIN>(softmin_tensor, vext::values({}), softmin_tensor);
 	const float softmin_sum = std::exp(-1.0f) + std::exp(-2.0f) + std::exp(-3.0f);
 	expect_tensor_near(softmin_tensor, { std::exp(-1.0f) / softmin_sum, std::exp(-2.0f) / softmin_sum, std::exp(-3.0f) / softmin_sum });
 
 	vext::Tensor<float> log_softmax_tensor({ 1.0f, 2.0f, 3.0f });
-	vext::unary<vext::Op::LOGSOFTMAX>(log_softmax_tensor);
+	vext::unary<vext::Op::LOGSOFTMAX>(log_softmax_tensor, vext::values({}), log_softmax_tensor);
 	expect_tensor_near(log_softmax_tensor, { std::log(std::exp(1.0f) / softmax_sum), std::log(std::exp(2.0f) / softmax_sum), std::log(std::exp(3.0f) / softmax_sum) });
 }
 
 TEST(TensorCpu, ParameterizedUnaryOpsMutateTensor)
 {
 	vext::Tensor<float> linear_tensor({ -1.0f, 2.0f });
-	vext::unary<vext::Op::LINEAR>(linear_tensor, 2.0f, 3.0f);
+	vext::unary<vext::Op::LINEAR>(linear_tensor, vext::values({ 2.0f, 3.0f }), linear_tensor);
 	expect_tensor_near(linear_tensor, { 1.0f, 7.0f });
 
 	vext::Tensor<float> clip_tensor({ -2.0f, 0.5f, 3.0f });
-	vext::unary<vext::Op::CLIP>(clip_tensor, -1.0f, 1.0f);
+	vext::unary<vext::Op::CLIP>(clip_tensor, vext::values({ -1.0f, 1.0f }), clip_tensor);
 	expect_tensor_near(clip_tensor, { -1.0f, 0.5f, 1.0f });
 
 	vext::Tensor<float> pow_tensor({ 2.0f, 3.0f });
-	vext::unary<vext::Op::POW>(pow_tensor, 2.0f, 3.0f);
+	vext::unary<vext::Op::POW>(pow_tensor, vext::values({ 2.0f, 3.0f }), pow_tensor);
 	expect_tensor_near(pow_tensor, { 16.0f, 54.0f });
 }
 
 TEST(TensorCpu, UnaryMinusNegatesInPlace)
 {
 	vext::Tensor<std::int32_t> tensor({ 1, -2, 3 });
-	vext::unary<vext::Op::NEG>(tensor);
+	vext::unary<vext::Op::NEG>(tensor, vext::values({}), tensor);
 
 	expect_tensor_values(tensor, { -1, 2, -3 });
 }
@@ -564,13 +573,13 @@ TEST(TensorCpuNoise, UnaryAndBinaryPerturbTheParameterizedOperand)
 	set_noise_descriptor(seed, counter);
 
 	vext::Tensor<float> unary_values({ 1.0f, 2.0f });
-	vext::unary<vext::Op::LINEAR, vext::ParameterMode::PERTURBED>(unary_values, 2.0f, 1.0f);
+	vext::unary<vext::Op::LINEAR, vext::EvaluationMode::PERTURBED>(unary_values, vext::values({ 2.0f, 1.0f }), unary_values);
 
 	expect_tensor_near(unary_values, { 2.0f * (1.0f + noise_value(seed, counter, 0)) + 1.0f, 2.0f * (2.0f + noise_value(seed, counter, 1)) + 1.0f });
 
 	const vext::Tensor<float> lhs({ { 10.0f, 20.0f, 30.0f }, { 40.0f, 50.0f, 60.0f } });
 	const vext::Tensor<float> rhs({ 1.0f, 2.0f, 3.0f });
-	const vext::Tensor<float> result = vext::binary<vext::Op::ADD, vext::ParameterMode::PERTURBED>(lhs, rhs);
+	const vext::Tensor<float> result = vext::binary<vext::Op::ADD, vext::EvaluationMode::PERTURBED>(lhs, rhs);
 
 	expect_tensor_near(result, { 11.0f + noise_value(seed, counter, 0), 22.0f + noise_value(seed, counter, 1), 33.0f + noise_value(seed, counter, 2), 41.0f + noise_value(seed, counter, 0), 52.0f + noise_value(seed, counter, 1), 63.0f + noise_value(seed, counter, 2) });
 }
@@ -583,12 +592,12 @@ TEST(TensorCpuNoise, ReductionPerturbsValuesBeforeAggregation)
 	set_noise_descriptor(seed, counter);
 
 	const vext::Tensor<float> values({ 1.0f, 2.0f, 4.0f });
-	const vext::Tensor<float> sum          = vext::reduction<vext::Op::SUM, vext::ParameterMode::PERTURBED>(values);
+	const vext::Tensor<float> sum          = vext::reduction<vext::Op::SUM, vext::EvaluationMode::PERTURBED>(values);
 	const float               expected_sum = 7.0f + noise_value(seed, counter, 0) + noise_value(seed, counter, 1) + noise_value(seed, counter, 2);
 
 	expect_scalar_near(sum, expected_sum);
 
-	const vext::Tensor<float> variance          = vext::reduction<vext::Op::VAR, vext::ParameterMode::PERTURBED>(values);
+	const vext::Tensor<float> variance          = vext::reduction<vext::Op::VAR, vext::EvaluationMode::PERTURBED>(values);
 	const float               v0                = 1.0f + noise_value(seed, counter, 0);
 	const float               v1                = 2.0f + noise_value(seed, counter, 1);
 	const float               v2                = 4.0f + noise_value(seed, counter, 2);
@@ -608,13 +617,13 @@ TEST(TensorCpuNoise, SparseOperationsPerturbSourceValuesBeforeAggregation)
 	const vext::Tensor<std::uint32_t> head({ 0U, 2U, 3U });
 	const vext::Tensor<std::uint32_t> tail({ 0U, 1U, 1U });
 	const vext::Tensor<float>         src({ { 1.0f, 2.0f }, { 3.0f, 4.0f } });
-	const vext::Tensor<float>         scatter = vext::csr_scatter<vext::Op::SUM, vext::ParameterMode::PERTURBED>(src, head, tail);
+	const vext::Tensor<float>         scatter = vext::csr_scatter<vext::Op::SUM, vext::EvaluationMode::PERTURBED>(src, head, tail);
 
 	expect_tensor_near(scatter, { 4.0f + noise_value(seed, counter, 0) + noise_value(seed, counter, 2), 6.0f + noise_value(seed, counter, 1) + noise_value(seed, counter, 3), 3.0f + noise_value(seed, counter, 2), 4.0f + noise_value(seed, counter, 3) });
 
 	const vext::Tensor<float> weights({ 1.0f, 2.0f, 3.0f });
 	const vext::Tensor<float> x({ 2.0f, 5.0f });
-	const vext::Tensor<float> spmv = vext::csr_spmv<vext::Op::SUM, vext::ParameterMode::PERTURBED>(weights, head, tail, x);
+	const vext::Tensor<float> spmv = vext::csr_spmv<vext::Op::SUM, vext::EvaluationMode::PERTURBED>(weights, head, tail, x);
 
 	expect_tensor_near(spmv, { (1.0f + noise_value(seed, counter, 0)) * 2.0f + (2.0f + noise_value(seed, counter, 1)) * 5.0f, (3.0f + noise_value(seed, counter, 2)) * 5.0f });
 }
@@ -628,7 +637,7 @@ TEST(TensorCpuNoise, MatmulPerturbsRightHandMatrixElements)
 
 	const vext::Tensor<float> lhs({ { 2.0f, 3.0f } });
 	const vext::Tensor<float> rhs({ { 1.0f, 4.0f }, { 5.0f, 7.0f } });
-	const vext::Tensor<float> result = vext::matmul<vext::ParameterMode::PERTURBED>(lhs, rhs);
+	const vext::Tensor<float> result = vext::matmul<vext::EvaluationMode::PERTURBED>(lhs, rhs);
 
 	expect_tensor_near(result, { 2.0f * (1.0f + noise_value(seed, counter, 0)) + 3.0f * (5.0f + noise_value(seed, counter, 2)), 2.0f * (4.0f + noise_value(seed, counter, 1)) + 3.0f * (7.0f + noise_value(seed, counter, 3)) });
 }

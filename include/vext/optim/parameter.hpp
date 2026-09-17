@@ -20,29 +20,51 @@
 namespace vext::optim
 {
 
-template <typename Tp, Backend Bp, ParameterMode Mp = ParameterMode::PLAIN>
+template <typename Tp, Backend Bp, EvaluationMode Mp = EvaluationMode::PLAIN>
 class Parameter
 {
 public:
 	template <std::integral... Is>
 	requires(std::same_as<Is, std::remove_cvref_t<Is>> && ...)
 	Parameter(Is... dims)
-		: __tensor(dims...)
+		: __tensor(dims...),
+		  __grad(dims...)
+	{
+	}
+
+	Parameter(
+		const std::vector<std::uint32_t>& dims)
+		: __tensor(dims),
+		  __grad(dims)
 	{
 	}
 
 public:
-	operator Tensor<Tp, Bp>&() noexcept
+	Tensor<Tp, Bp>&
+	tensor() noexcept
 	{
 		return __tensor;
 	}
 
-	operator const Tensor<Tp, Bp>&() const noexcept
+	const Tensor<Tp, Bp>&
+	tensor() const noexcept
 	{
 		return __tensor;
 	}
 
 public:
+	Tensor<Tp, Bp>&
+	grad() noexcept
+	{
+		return __grad;
+	}
+
+	const Tensor<Tp, Bp>&
+	grad() const noexcept
+	{
+		return __grad;
+	}
+
 	void
 	xavier_normal()
 	{
@@ -146,19 +168,21 @@ private:
 
 protected:
 	Tensor<Tp, Bp> __tensor;
+	Tensor<Tp, Bp> __grad;
 };
 
 template <typename Tp, Backend Bp>
-class Parameter<Tp, Bp, ParameterMode::PERTURBED> : public Parameter<Tp, Bp, ParameterMode::PLAIN>
+class Parameter<Tp, Bp, EvaluationMode::PERTURBED> : public Parameter<Tp, Bp, EvaluationMode::PLAIN>
 {
 private:
-	using Base = Parameter<Tp, Bp, ParameterMode::PLAIN>;
+	using Base = Parameter<Tp, Bp, EvaluationMode::PLAIN>;
 
 public:
 	using Base::Base;
-	using Base::operator Tensor<Tp, Bp>&;
+	using Base::tensor;
 
-	operator const Tensor<Tp, Bp>&() const noexcept
+	const Tensor<Tp, Bp>&
+	tensor() const noexcept
 	{
 		if constexpr(Bp == Backend::CPU)
 			{

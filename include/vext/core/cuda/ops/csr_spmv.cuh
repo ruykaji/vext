@@ -25,7 +25,7 @@
 namespace vext::core::cuda::ops::kernel
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
 requires core::SparseReductionOperation<Kp>
 __global__ void
 csr_spmv(
@@ -61,7 +61,7 @@ csr_spmv(
 				{
 					T1 prod = 0;
 
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							prod = (A[h] + noise(maybe_descriptor, h)) * x[tail[h]];
 						}
@@ -201,7 +201,7 @@ csr_spmv(
 namespace vext::core::cuda::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename T3>
 requires core::SparseReductionOperation<Kp>
 void
 csr_spmv(
@@ -217,7 +217,7 @@ csr_spmv(
 
 	if constexpr(Kp == Op::VAR || Kp == Op::STD)
 		{
-			if constexpr(Mp == ParameterMode::PERTURBED)
+			if constexpr(Mp == EvaluationMode::PERTURBED)
 				{
 					const NoiseDescriptor& descriptor = sequentional_noise_descriptor();
 					kernel::csr_spmv<Op::MEAN, Mp><<<grid_size, block_size>>>(y, A, head, tail, x, N, descriptor);
@@ -237,7 +237,7 @@ csr_spmv(
 		}
 	else
 		{
-			if constexpr(Mp == ParameterMode::PERTURBED)
+			if constexpr(Mp == EvaluationMode::PERTURBED)
 				{
 					kernel::csr_spmv<Kp, Mp><<<grid_size, block_size>>>(y, A, head, tail, x, N, sequentional_noise_descriptor());
 				}

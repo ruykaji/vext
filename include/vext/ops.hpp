@@ -11,7 +11,6 @@
 #include <vext/core/cpu/ops/scalar.hpp>
 
 #if VEXT_CUDA
-#include <vext/core/cuda/ols/scalar.cuh>
 #include <vext/core/cuda/ops/csr_scatter.cuh>
 #include <vext/core/cuda/ops/csr_spmv.cuh>
 #include <vext/core/cuda/ops/elementwise_binary.cuh>
@@ -19,6 +18,7 @@
 #include <vext/core/cuda/ops/elementwise_unary.cuh>
 #include <vext/core/cuda/ops/linear_algebra.cuh>
 #include <vext/core/cuda/ops/reduction.cuh>
+#include <vext/core/cuda/ops/scalar.cuh>
 #endif
 
 #include <vext/tensor.hpp>
@@ -30,9 +30,18 @@ using Axes = std::vector<std::int32_t>;
 
 inline Axes
 axes(
-	std::initializer_list<std::int32_t> values)
+	std::initializer_list<std::int32_t> data)
 {
-	return Axes(values);
+	return Axes(data);
+}
+
+using Values = std::vector<float>;
+
+inline Values
+values(
+	std::initializer_list<float> data)
+{
+	return Values(data);
 }
 
 template <typename T1, Backend B1>
@@ -63,11 +72,11 @@ assign(
 	#endif
 }
 
-template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
+template <Op Kp, EvaluationMode Mp = EvaluationMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
 requires core::ScalarOperation<Kp>
-void
+auto
 scalar(
-	const Tensor<T1, B1>& tensor,
+	const Tensor<T1, B1>& src,
 	const T2              value,
 	To&&                  maybe_out = {})
 {
@@ -96,25 +105,25 @@ scalar(
 				}
 			else
 				{
-					return TensorOut(tensor.dims());
+					return TensorOut(src.dims());
 				}
 		};
 
 	TensorOut out = assign_out();
 
-	if(tensor.length() == 0)
+	if(src.length() == 0)
 		{
 			throw std::runtime_error("Scalar operation requires a non-empty input tensor.");
 		}
 
 	if constexpr(B1 == Backend::CPU)
 		{
-			core::cpu::ops::scalar<Kp, Mp>(out.data(), tensor.data(), tensor.length(), value);
+			core::cpu::ops::scalar<Kp, Mp>(out.data(), src.data(), src.length(), value);
 		}
 	#if VEXT_CUDA
 	else
 		{
-			core::cuda::ops::scalar<Kp, Mp>(out.data(), tensor.data(), tensor.length(), value);
+			core::cuda::ops::scalar<Kp, Mp>(out.data(), src.data(), src.length(), value);
 		}
 	#else
 	else
@@ -122,28 +131,77 @@ scalar(
 			static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
 		}
 	#endif
+
+	if constexpr(IS_OUT_DEFINED)
+		{
+			return;
+		}
+	else
+		{
+			return out;
+		}
 }
 
-template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, core::Arithmetic... Is>
+template <Op Kp, EvaluationMode Mp = EvaluationMode::PLAIN, typename T1, Backend B1, typename Ta = core::no_value_t, typename To = core::no_value_t>
 requires core::UnaryOperation<Kp>
-void
+auto
 unary(
-	Tensor<T1, B1>& tensor,
-	Is... param)
+	const Tensor<T1, B1>& src,
+	Ta&&                  values    = {},
+	To&&                  maybe_out = {})
 {
-	if(tensor.length() == 0)
+	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
+
+	if constexpr(IS_OUT_DEFINED)
+		{
+			constexpr bool IS_MUTABLE = !std::is_const_v<std::remove_reference_t<To>>;
+			static_assert(IS_MUTABLE, "");
+
+			constexpr bool IS_TENSOR_INSTANTIATION = core::is_tensor_instantiation<std::remove_cvref_t<To>, Tensor>::value;
+			static_assert(IS_TENSOR_INSTANTIATION, "");
+		}
+
+	using CommonType = core::ReductionOut<Kp, T1>;
+	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
+
+	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_BACKEND, "Reduction output must use the same backend as its input tensor.");
+
+	constexpr bool IS_VALUES = !std::is_same_v<Ta, core::no_value_t>;
+
+	if constexpr(IS_VALUES)
+		{
+			constexpr bool IS_VALUES = std::is_same_v<std::remove_cvref_t<Ta>, Values>;
+			static_assert(IS_VALUES, "Parameter values must be provided as vext::Values.");
+		}
+
+	if(src.length() == 0)
 		{
 			throw std::runtime_error("Unary operation requires a non-empty input tensor.");
 		}
 
+	const auto assign_out = [&]() -> TensorOut
+		{
+			if constexpr(IS_OUT_DEFINED)
+				{
+					return maybe_out;
+				}
+			else
+				{
+					return TensorOut(src.dims());
+				}
+		};
+
+	TensorOut out = assign_out();
+
 	if constexpr(B1 == Backend::CPU)
 		{
-			core::cpu::ops::unary<Kp, Mp>(tensor.data(), tensor.length(), param...);
+			core::cpu::ops::unary<Kp, Mp>(out.data(), src.data(), src.length(), values);
 		}
 	#if VEXT_CUDA
 	else
 		{
-			core::cuda::ops::unary<Kp, Mp>(tensor.data(), tensor.length(), param...);
+			core::cuda::ops::unary<Kp, Mp>(out.data(), src.data(), src.length(), values);
 		}
 	#else
 	else
@@ -151,9 +209,18 @@ unary(
 			static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
 		}
 	#endif
+
+	if constexpr(IS_OUT_DEFINED)
+		{
+			return;
+		}
+	else
+		{
+			return out;
+		}
 }
 
-template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
+template <Op Kp, EvaluationMode Mp = EvaluationMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
 requires core::BinaryOperation<Kp>
 auto
 binary(
@@ -379,7 +446,7 @@ logical(
 		}
 }
 
-template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename Ta = core::no_value_t, typename To = core::no_value_t>
+template <Op Kp, EvaluationMode Mp = EvaluationMode::PLAIN, typename T1, Backend B1, typename Ta = core::no_value_t, typename To = core::no_value_t>
 requires core::ReductionOperation<Kp>
 auto
 reduction(
@@ -544,7 +611,7 @@ reduction(
 		}
 }
 
-template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename To = core::no_value_t>
+template <Op Kp, EvaluationMode Mp = EvaluationMode::PLAIN, typename T1, Backend B1, typename To = core::no_value_t>
 requires core::SparseReductionOperation<Kp>
 auto
 csr_scatter(
@@ -630,7 +697,7 @@ csr_scatter(
 		}
 }
 
-template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
+template <Op Kp, EvaluationMode Mp = EvaluationMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
 requires core::SparseReductionOperation<Kp>
 auto
 csr_spmv(
@@ -717,7 +784,7 @@ csr_spmv(
 		}
 }
 
-template <ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
+template <EvaluationMode Mp = EvaluationMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
 auto
 matmul(
 	const Tensor<T1, B1>& lhs,

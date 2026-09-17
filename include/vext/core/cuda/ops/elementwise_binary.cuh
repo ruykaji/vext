@@ -34,7 +34,7 @@ struct BinaryWithBroadcastMeta
 	std::uint32_t size = 0;
 };
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
 requires core::BinaryOperation<Kp>
 __global__ void
 binary(
@@ -51,7 +51,7 @@ binary(
 		{
 			if constexpr(Kp == Op::ADD)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] + (b[i] + noise(maybe_descriptor, i));
 						}
@@ -62,7 +62,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::SUB)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] - (b[i] + noise(maybe_descriptor, i));
 						}
@@ -73,7 +73,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::MUL)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] * (b[i] + noise(maybe_descriptor, i));
 						}
@@ -84,7 +84,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::DIV)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] / (b[i] + noise(maybe_descriptor, i));
 						}
@@ -95,7 +95,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = ::cuda::std::pow(a[i], b[i] + noise(maybe_descriptor, i));
 						}
@@ -106,7 +106,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::MIN)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							const ::cuda::std::common_type_t<T3, float> value = b[i] + noise(maybe_descriptor, i);
 							out[i]                                            = (value < a[i]) ? value : a[i];
@@ -118,7 +118,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::MAX)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							const ::cuda::std::common_type_t<T3, float> value = b[i] + noise(maybe_descriptor, i);
 							out[i]                                            = (a[i] < value) ? value : a[i];
@@ -130,7 +130,7 @@ binary(
 				}
 			else if constexpr(Kp == Op::PRELU)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							const T1 value    = static_cast<T1>(a[i]);
 							const T1 positive = (T1{ 0 } < value) ? value : T1{ 0 };
@@ -148,7 +148,7 @@ binary(
 		}
 }
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename T3, typename Dp = core::no_value_t>
 requires core::BinaryOperation<Kp>
 __global__ void
 binary_with_broadcast(
@@ -182,7 +182,7 @@ binary_with_broadcast(
 
 			if constexpr(Kp == Op::ADD)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] + (b[b_offset] + noise(maybe_descriptor, b_offset));
 						}
@@ -193,7 +193,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::SUB)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] - (b[b_offset] + noise(maybe_descriptor, b_offset));
 						}
@@ -204,7 +204,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::MUL)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] * (b[b_offset] + noise(maybe_descriptor, b_offset));
 						}
@@ -215,7 +215,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::DIV)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = a[i] / (b[b_offset] + noise(maybe_descriptor, b_offset));
 						}
@@ -226,7 +226,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::POW)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							out[i] = ::cuda::std::pow(a[i], b[b_offset] + noise(maybe_descriptor, b_offset));
 						}
@@ -237,7 +237,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::MIN)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							const ::cuda::std::common_type_t<T3, float> value = b[b_offset] + noise(maybe_descriptor, b_offset);
 							out[i]                                            = (value < a[i]) ? value : a[i];
@@ -249,7 +249,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::MAX)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							const ::cuda::std::common_type_t<T3, float> value = b[b_offset] + noise(maybe_descriptor, b_offset);
 							out[i]                                            = (a[i] < value) ? value : a[i];
@@ -261,7 +261,7 @@ binary_with_broadcast(
 				}
 			else if constexpr(Kp == Op::PRELU)
 				{
-					if constexpr(Mp == ParameterMode::PERTURBED)
+					if constexpr(Mp == EvaluationMode::PERTURBED)
 						{
 							const T1 value    = static_cast<T1>(a[i]);
 							const T1 positive = (T1{ 0 } < value) ? value : T1{ 0 };
@@ -284,7 +284,7 @@ binary_with_broadcast(
 namespace vext::core::cuda::ops
 {
 
-template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, typename T2, typename T3>
+template <Op Kp, EvaluationMode Mp = EvaluationMode::PLAIN, typename T1, typename T2, typename T3>
 requires core::BinaryOperation<Kp>
 void
 binary(
@@ -296,7 +296,7 @@ binary(
 	constexpr std::uint32_t block_size = 256;
 	const std::uint32_t     grid_size  = (N + block_size - 1) / block_size;
 
-	if constexpr(Mp == ParameterMode::PERTURBED)
+	if constexpr(Mp == EvaluationMode::PERTURBED)
 		{
 			kernel::binary<Kp, Mp><<<grid_size, block_size>>>(out, a, b, N, sequentional_noise_descriptor());
 		}
@@ -308,7 +308,7 @@ binary(
 	CUDA_CHECK(cudaGetLastError());
 }
 
-template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, typename T2, typename T3>
+template <Op Kp, EvaluationMode Mp = EvaluationMode::PLAIN, typename T1, typename T2, typename T3>
 requires core::BinaryOperation<Kp>
 void
 binary_with_broadcast(
@@ -330,7 +330,7 @@ binary_with_broadcast(
 			meta.strides[i] = strides[i];
 		}
 
-	if constexpr(Mp == ParameterMode::PERTURBED)
+	if constexpr(Mp == EvaluationMode::PERTURBED)
 		{
 			const NoiseDescriptor& descriptor = sequentional_noise_descriptor();
 			kernel::binary_with_broadcast<Kp, Mp><<<grid_size, block_size>>>(out, a, b, N, meta, descriptor);

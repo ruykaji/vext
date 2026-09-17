@@ -25,7 +25,7 @@
 namespace vext::core::cuda::ops::kernel
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename Dp = core::no_value_t>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2, typename Dp = core::no_value_t>
 requires core::SparseReductionOperation<Kp>
 __global__ void
 csr_scatter(
@@ -74,7 +74,7 @@ csr_scatter(
 						{
 							if constexpr(Kp == Op::PROD)
 								{
-									if constexpr(Mp == ParameterMode::PERTURBED)
+									if constexpr(Mp == EvaluationMode::PERTURBED)
 										{
 											const std::uint32_t index = tail[h] * S + k;
 											accumulator *= src[index] + noise(maybe_descriptor, index);
@@ -86,7 +86,7 @@ csr_scatter(
 								}
 							else if constexpr(Kp == Op::MIN)
 								{
-									if constexpr(Mp == ParameterMode::PERTURBED)
+									if constexpr(Mp == EvaluationMode::PERTURBED)
 										{
 											const std::uint32_t index = tail[h] * S + k;
 											const T1            value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
@@ -100,7 +100,7 @@ csr_scatter(
 								}
 							else if constexpr(Kp == Op::MAX)
 								{
-									if constexpr(Mp == ParameterMode::PERTURBED)
+									if constexpr(Mp == EvaluationMode::PERTURBED)
 										{
 											const std::uint32_t index = tail[h] * S + k;
 											const T1            value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
@@ -116,7 +116,7 @@ csr_scatter(
 								{
 									float diff = 0.0f;
 
-									if constexpr(Mp == ParameterMode::PERTURBED)
+									if constexpr(Mp == EvaluationMode::PERTURBED)
 										{
 											const std::uint32_t index = tail[h] * S + k;
 											diff                      = (src[index] + noise(maybe_descriptor, index)) - out[i * S + k];
@@ -130,7 +130,7 @@ csr_scatter(
 								}
 							else
 								{
-									if constexpr(Mp == ParameterMode::PERTURBED)
+									if constexpr(Mp == EvaluationMode::PERTURBED)
 										{
 											const std::uint32_t index = tail[h] * S + k;
 											accumulator += src[index] + noise(maybe_descriptor, index);
@@ -188,7 +188,7 @@ csr_scatter(
 namespace vext::core::cuda::ops
 {
 
-template <Op Kp, ParameterMode Mp, typename T1, typename T2>
+template <Op Kp, EvaluationMode Mp, typename T1, typename T2>
 requires core::SparseReductionOperation<Kp>
 void
 csr_scatter(
@@ -204,7 +204,7 @@ csr_scatter(
 
 	if constexpr(Kp == Op::VAR || Kp == Op::STD)
 		{
-			if constexpr(Mp == ParameterMode::PERTURBED)
+			if constexpr(Mp == EvaluationMode::PERTURBED)
 				{
 					const NoiseDescriptor& descriptor = sequentional_noise_descriptor();
 					kernel::csr_scatter<Op::MEAN, Mp><<<grid_size, block_size>>>(out, src, head, tail, N, S, descriptor);
@@ -224,7 +224,7 @@ csr_scatter(
 		}
 	else
 		{
-			if constexpr(Mp == ParameterMode::PERTURBED)
+			if constexpr(Mp == EvaluationMode::PERTURBED)
 				{
 					kernel::csr_scatter<Kp, Mp><<<grid_size, block_size>>>(out, src, head, tail, N, S, sequentional_noise_descriptor());
 				}

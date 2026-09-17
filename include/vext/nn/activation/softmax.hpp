@@ -22,7 +22,7 @@ public:
 			{
 				unary<Op::SOFTMAX>(x);
 			}
-		else if constexpr(Mp == Mutation::COPY)
+		else if constexpr(Mp == Mutation::OUT_OF_PLACE)
 			{
 				Tensor<float, Bp> copy(x);
 				unary<Op::SOFTMAX>(copy);

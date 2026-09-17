@@ -8,7 +8,7 @@
 namespace vext::nn::layer
 {
 
-template <Backend Bp, ParameterMode Mp = ParameterMode::PLAIN>
+template <Backend Bp, EvaluationMode Mp = EvaluationMode::PLAIN>
 class Linear : public Module<Bp, Mp>
 {
 public:
@@ -29,8 +29,7 @@ public:
 	operator()(
 		const Tensor<float, Bp>& x) const
 	{
-		const Tensor<float, Bp> transformed = matmul<Mp>(x, static_cast<const Tensor<float, Bp>&>(__weight));
-		return binary<Op::ADD, Mp>(transformed, static_cast<const Tensor<float, Bp>&>(__bias));
+		return binary<Op::ADD, Mp>(matmul<Mp>(x, __weight.tensor()), __bias.tensor());
 	}
 
 private:

@@ -23,7 +23,7 @@ public:
 			{
 				unary<Op::ELU>(x, a);
 			}
-		else if constexpr(Mp == Mutation::COPY)
+		else if constexpr(Mp == Mutation::OUT_OF_PLACE)
 			{
 				Tensor<float, Bp> copy(x);
 				unary<Op::ELU>(copy, a);
