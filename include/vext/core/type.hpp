@@ -48,6 +48,9 @@ inline constexpr bool is_tensor_instatiation_v = is_tensor_instantiation<Templat
 /** === Operation category constraints === */
 
 template <Op Kp>
+concept ScalarOperation = Kp == Op::ADD || Kp == Op::SUB || Kp == Op::MUL || Kp == Op::DIV || Kp == Op::POW;
+
+template <Op Kp>
 concept UnaryOperation = Kp == Op::ABS || Kp == Op::SIN || Kp == Op::COS || Kp == Op::TANH || Kp == Op::NEG || Kp == Op::EXP || Kp == Op::LOG || Kp == Op::SQRT || Kp == Op::SQUARE || Kp == Op::ROUND || Kp == Op::SIGMOID || Kp == Op::SOFT_RELU || Kp == Op::RELU || Kp == Op::SOFTMAX || Kp == Op::SOFTMIN || Kp == Op::LOGSOFTMAX || Kp == Op::LEAKY_RELU || Kp == Op::ELU || Kp == Op::SWISH || Kp == Op::LINEAR || Kp == Op::CLIP || Kp == Op::POW;
 
 template <Op Kp>

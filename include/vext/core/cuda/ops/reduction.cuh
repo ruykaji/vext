@@ -34,19 +34,18 @@ struct ReductionMeta
 	std::uint32_t size = 0;
 };
 
-// clang-format off
-__forceinline__  __device__ std::uint32_t
+__device__ __forceinline__ auto
 axis_offset(
-	std::uint32_t        element, 
-    const ReductionMeta& meta)
+	std::uint32_t        element,
+	const ReductionMeta& meta)
 {
 	std::uint32_t offset = 0;
 
-	for(std::int32_t i = meta.size - 1; i >=0 ; --i)
+	for(std::int32_t i = meta.size - 1; i >= 0; --i)
 		{
-            const std::uint32_t d     = meta.dims[i];
+			const std::uint32_t d     = meta.dims[i];
 			const std::uint32_t q     = element / meta.dims[i];
-            const std::uint32_t index = element - q * d;
+			const std::uint32_t index = element - q * d;
 
 			element = q;
 			offset += index * meta.strides[i];
@@ -54,8 +53,6 @@ axis_offset(
 
 	return offset;
 }
-
-// clang-format on
 
 template <Op Kp, ParameterMode Mp, typename T1, typename T2, typename Dp = core::no_value_t>
 requires core::ReductionOperation<Kp>
@@ -109,8 +106,8 @@ reduce(
 							if constexpr(Mp == ParameterMode::PERTURBED)
 								{
 									const std::uint32_t index = keep_offset + reduce_offset;
-									const T1 value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
-									accumulator    = (value < accumulator) ? value : accumulator;
+									const T1            value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
+									accumulator               = (value < accumulator) ? value : accumulator;
 								}
 							else
 								{
@@ -123,8 +120,8 @@ reduce(
 							if constexpr(Mp == ParameterMode::PERTURBED)
 								{
 									const std::uint32_t index = keep_offset + reduce_offset;
-									const T1 value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
-									accumulator    = (accumulator < value) ? value : accumulator;
+									const T1            value = static_cast<T1>(src[index] + noise(maybe_descriptor, index));
+									accumulator               = (accumulator < value) ? value : accumulator;
 								}
 							else
 								{
@@ -286,7 +283,7 @@ reduce(
 namespace vext::core::cuda::ops
 {
 
-template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, typename T2>
+template <Op Kp, ParameterMode Mp, typename T1, typename T2>
 requires core::ReductionOperation<Kp>
 void
 reduce(

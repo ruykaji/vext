@@ -8,8 +8,10 @@
 #include <vext/core/cpu/ops/elementwise_unary.hpp>
 #include <vext/core/cpu/ops/linear_algebra.hpp>
 #include <vext/core/cpu/ops/reduction.hpp>
+#include <vext/core/cpu/ops/scalar.hpp>
 
 #if VEXT_CUDA
+#include <vext/core/cuda/ols/scalar.cuh>
 #include <vext/core/cuda/ops/csr_scatter.cuh>
 #include <vext/core/cuda/ops/csr_spmv.cuh>
 #include <vext/core/cuda/ops/elementwise_binary.cuh>
@@ -31,6 +33,95 @@ axes(
 	std::initializer_list<std::int32_t> values)
 {
 	return Axes(values);
+}
+
+template <typename T1, Backend B1>
+void
+assign(
+	Tensor<T1, B1>& tensor,
+	const T1        value)
+{
+	if(tensor.length() == 0)
+		{
+			throw std::runtime_error("Scalar operation requires a non-empty input tensor.");
+		}
+
+	if constexpr(B1 == Backend::CPU)
+		{
+			core::cpu::ops::memset(tensor.data(), value, tensor.length());
+		}
+	#if VEXT_CUDA
+	else
+		{
+			core::cuda::ops::memset(tensor.data(), value, tensor.length());
+		}
+	#else
+	else
+		{
+			static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
+		}
+	#endif
+}
+
+template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, typename T2, typename To = core::no_value_t>
+requires core::ScalarOperation<Kp>
+void
+scalar(
+	const Tensor<T1, B1>& tensor,
+	const T2              value,
+	To&&                  maybe_out = {})
+{
+	constexpr bool IS_OUT_DEFINED = !std::is_same_v<To, core::no_value_t>;
+
+	if constexpr(IS_OUT_DEFINED)
+		{
+			constexpr bool IS_MUTABLE = !std::is_const_v<std::remove_reference_t<To>>;
+			static_assert(IS_MUTABLE, "");
+
+			constexpr bool IS_TENSOR_INSTANTIATION = core::is_tensor_instantiation<std::remove_reference_t<To>, Tensor>::value;
+			static_assert(IS_TENSOR_INSTANTIATION, "");
+		}
+
+	using CommonType = std::common_type_t<T1, T2>;
+	using TensorOut  = std::conditional_t<IS_OUT_DEFINED, To, Tensor<CommonType, B1>>;
+
+	constexpr bool IS_SAME_BACKEND = (B1 == (std::remove_reference_t<TensorOut>::backend_type));
+	static_assert(IS_SAME_BACKEND, "Scalar operation output must use the same backend as its input and output tensors.");
+
+	const auto assign_out = [&]() -> TensorOut
+		{
+			if constexpr(IS_OUT_DEFINED)
+				{
+					return maybe_out;
+				}
+			else
+				{
+					return TensorOut(tensor.dims());
+				}
+		};
+
+	TensorOut out = assign_out();
+
+	if(tensor.length() == 0)
+		{
+			throw std::runtime_error("Scalar operation requires a non-empty input tensor.");
+		}
+
+	if constexpr(B1 == Backend::CPU)
+		{
+			core::cpu::ops::scalar<Kp, Mp>(out.data(), tensor.data(), tensor.length(), value);
+		}
+	#if VEXT_CUDA
+	else
+		{
+			core::cuda::ops::scalar<Kp, Mp>(out.data(), tensor.data(), tensor.length(), value);
+		}
+	#else
+	else
+		{
+			static_assert(core::dependent_false<B1>, "Unsupported backend or missing VEXT_CUDA flag.");
+		}
+	#endif
 }
 
 template <Op Kp, ParameterMode Mp = ParameterMode::PLAIN, typename T1, Backend B1, core::Arithmetic... Is>
@@ -173,15 +264,12 @@ binary(
 							throw std::runtime_error("Binary operation cannot broadcast the right-hand tensor shape to the left-hand tensor shape.");
 						}
 
-			// Map source dimensions to right-hand storage strides. Dimensions
-			// outside the matching rhs shape are broadcast dimensions and must
-			// keep a zero stride; using lhs strides here walks past rhs.data().
-			strides.assign(source_size, 0);
+					strides.assign(source_size, 0);
 
-			for(std::uint64_t i = 0; i < target_size; ++i)
-				{
-					strides[offset_left + i] = rhs.strides()[i];
-				}
+					for(std::uint64_t i = 0; i < target_size; ++i)
+						{
+							strides[offset_left + i] = rhs.strides()[i];
+						}
 				}
 
 			if constexpr(B1 == Backend::CPU)
